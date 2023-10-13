@@ -11,7 +11,7 @@ import { IssueGanttBlock, IssueGanttSidebarBlock, IssuePeekOverview } from "comp
 // types
 import { IIssueUnGroupedStructure } from "store/issue";
 
-export const GanttLayout: React.FC = observer(() => {
+export const ProjectGanttLayout: React.FC = observer(() => {
   const router = useRouter();
   const { workspaceSlug, projectId } = router.query;
 

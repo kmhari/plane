@@ -9,10 +9,10 @@ import { useMobxStore } from "lib/mobx/store-provider";
 import {
   ListLayout,
   CalendarLayout,
-  GanttLayout,
+  ProjectGanttLayout,
   KanBanLayout,
   ProjectAppliedFiltersRoot,
-  SpreadsheetLayout,
+  ProjectSpreadsheetLayout,
 } from "components/issues";
 
 export const ProjectLayoutRoot: React.FC = observer(() => {
@@ -26,6 +26,7 @@ export const ProjectLayoutRoot: React.FC = observer(() => {
 
   const { issue: issueStore, project: projectStore, issueFilter: issueFilterStore } = useMobxStore();
 
+  // TODO: remove fetch logic from here
   useSWR(
     workspaceSlug && projectId ? `PROJECT_ISSUES` : null,
     async () => {
@@ -56,9 +57,9 @@ export const ProjectLayoutRoot: React.FC = observer(() => {
         ) : activeLayout === "calendar" ? (
           <CalendarLayout />
         ) : activeLayout === "gantt_chart" ? (
-          <GanttLayout />
+          <ProjectGanttLayout />
         ) : activeLayout === "spreadsheet" ? (
-          <SpreadsheetLayout />
+          <ProjectSpreadsheetLayout />
         ) : null}
       </div>
     </div>

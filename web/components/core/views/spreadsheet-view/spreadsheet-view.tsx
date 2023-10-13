@@ -6,7 +6,7 @@ import { observer } from "mobx-react-lite";
 import useLocalStorage from "hooks/use-local-storage";
 // components
 import {
-  ListInlineCreateIssueForm,
+  // ListInlineCreateIssueForm,
   SpreadsheetAssigneeColumn,
   SpreadsheetCreatedOnColumn,
   SpreadsheetDueDateColumn,
@@ -19,7 +19,6 @@ import {
   SpreadsheetUpdatedOnColumn,
 } from "components/core";
 import { CustomMenu, Icon } from "components/ui";
-import { IssuePeekOverview } from "components/issues";
 import { Spinner } from "@plane/ui";
 // types
 import { IIssue, IIssueDisplayFilterOptions, IIssueDisplayProperties, TIssueOrderByOptions } from "types";
@@ -32,7 +31,7 @@ type Props = {
   handleDisplayFilterUpdate: (data: Partial<IIssueDisplayFilterOptions>) => void;
   issues: IIssue[] | undefined;
   handleIssueAction: (issue: IIssue, action: "copy" | "delete" | "edit") => void;
-  handleUpdateIssue: (issueId: string, data: Partial<IIssue>) => void;
+  handleUpdateIssue: (issue: IIssue, data: Partial<IIssue>) => void;
   openIssuesListModal?: (() => void) | null;
   disableUserActions: boolean;
 };
@@ -50,7 +49,6 @@ export const SpreadsheetView: React.FC<Props> = observer((props) => {
   } = props;
 
   const [expandedIssues, setExpandedIssues] = useState<string[]>([]);
-  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
 
   const [isInlineCreateIssueFormOpen, setIsInlineCreateIssueFormOpen] = useState(false);
 
@@ -59,7 +57,7 @@ export const SpreadsheetView: React.FC<Props> = observer((props) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const router = useRouter();
-  const { workspaceSlug, cycleId, moduleId } = router.query;
+  const { cycleId, moduleId } = router.query;
 
   const type = cycleId ? "cycle" : moduleId ? "module" : "issue";
 
@@ -266,10 +264,10 @@ export const SpreadsheetView: React.FC<Props> = observer((props) => {
   );
 
   const handleScroll = () => {
-    if (containerRef.current) {
-      const scrollLeft = containerRef.current.scrollLeft;
-      setIsScrolled(scrollLeft > 0);
-    }
+    if (!containerRef.current) return;
+
+    const scrollLeft = containerRef.current.scrollLeft;
+    setIsScrolled(scrollLeft > 0);
   };
 
   useEffect(() => {
@@ -288,11 +286,6 @@ export const SpreadsheetView: React.FC<Props> = observer((props) => {
 
   return (
     <>
-      <IssuePeekOverview
-        projectId={currentProjectId ?? ""}
-        workspaceSlug={workspaceSlug?.toString() ?? ""}
-        readOnly={disableUserActions}
-      />
       <div className="relative flex h-full w-full rounded-lg text-custom-text-200 overflow-x-auto whitespace-nowrap bg-custom-background-200">
         <div className="h-full w-full flex flex-col">
           <div ref={containerRef} className="flex max-h-full h-full overflow-y-auto">
@@ -302,7 +295,7 @@ export const SpreadsheetView: React.FC<Props> = observer((props) => {
                   <div
                     className="relative flex flex-col h-max w-full bg-custom-background-100 z-[2]"
                     style={{
-                      boxShadow: isScrolled ? "8px -9px 12px rgba(0, 0, 0, 0.15)" : "",
+                      boxShadow: isScrolled ? "4px -9px 12px rgba(0, 0, 0, 0.1)" : "",
                     }}
                   >
                     <div className="flex items-center text-sm font-medium z-[2] h-11 w-full sticky top-0 bg-custom-background-90 border border-l-0 border-custom-border-100">
@@ -312,14 +305,13 @@ export const SpreadsheetView: React.FC<Props> = observer((props) => {
                       <span className="flex items-center px-4 py-2.5 h-full w-full flex-grow">Issue</span>
                     </div>
 
-                    {issues.map((issue: IIssue, index) => (
+                    {issues.map((issue, index) => (
                       <SpreadsheetIssuesColumn
                         key={`${issue.id}_${index}`}
                         issue={issue}
                         projectId={issue.project_detail.id}
                         expandedIssues={expandedIssues}
                         setExpandedIssues={setExpandedIssues}
-                        setCurrentProjectId={setCurrentProjectId}
                         properties={displayProperties}
                         handleIssueAction={handleIssueAction}
                         disableUserActions={disableUserActions}
@@ -361,7 +353,7 @@ export const SpreadsheetView: React.FC<Props> = observer((props) => {
           </div>
 
           <div className="border-t border-custom-border-100">
-            <div className="mb-3 z-50 sticky bottom-0 left-0">
+            {/* <div className="mb-3 z-50 sticky bottom-0 left-0">
               <ListInlineCreateIssueForm
                 isOpen={isInlineCreateIssueFormOpen}
                 handleClose={() => setIsInlineCreateIssueFormOpen(false)}
@@ -370,7 +362,7 @@ export const SpreadsheetView: React.FC<Props> = observer((props) => {
                   ...(moduleId && { module: moduleId.toString() }),
                 }}
               />
-            </div>
+            </div> */}
 
             {type === "issue"
               ? !disableUserActions &&

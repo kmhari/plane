@@ -11,6 +11,8 @@ import { observer } from "mobx-react-lite";
 // mobx
 import { useMobxStore } from "lib/mobx/store-provider";
 import { RootStore } from "store/root";
+// types
+import { IIssue } from "types";
 
 export interface IGroupByKanBan {
   issues: any;
@@ -20,7 +22,7 @@ export interface IGroupByKanBan {
   list: any;
   listKey: string;
   isDragDisabled: boolean;
-  handleIssues?: (sub_group_by: string | null, group_by: string | null, issue: any) => void;
+  handleIssues?: (sub_group_by: string | null, group_by: string | null, issue: IIssue) => void;
   display_properties: any;
   kanBanToggle: any;
   handleKanBanToggle: any;

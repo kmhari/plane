@@ -19,7 +19,7 @@ import { StateSelect } from "components/states";
 import { copyTextToClipboard } from "helpers/string.helper";
 import { renderLongDetailDateFormat } from "helpers/date-time.helper";
 // types
-import { ICurrentUserResponse, IIssue, IState, ISubIssueResponse, Properties, TIssuePriorities, UserAuth } from "types";
+import { IUser, IIssue, IState, ISubIssueResponse, Properties, TIssuePriorities, UserAuth } from "types";
 // constant
 import {
   CYCLE_DETAILS,
@@ -42,7 +42,7 @@ type Props = {
   handleDeleteIssue: (issue: IIssue) => void;
   gridTemplateColumns: string;
   disableUserActions: boolean;
-  user: ICurrentUserResponse | undefined;
+  user: IUser | undefined;
   userAuth: UserAuth;
   nestingLevel: number;
 };
@@ -159,6 +159,8 @@ export const SingleSpreadsheetIssue: React.FC<Props> = ({
   };
 
   const handleStateChange = (data: string, states: IState[] | undefined) => {
+    if (!user) return;
+
     const oldState = states?.find((s) => s.id === issue.state);
     const newState = states?.find((s) => s.id === data);
 
@@ -197,6 +199,8 @@ export const SingleSpreadsheetIssue: React.FC<Props> = ({
   };
 
   const handlePriorityChange = (data: TIssuePriorities) => {
+    if (!user) return;
+
     partialUpdateIssue({ priority: data }, issue);
     trackEventServices.trackIssuePartialPropertyUpdateEvent(
       {
@@ -213,6 +217,8 @@ export const SingleSpreadsheetIssue: React.FC<Props> = ({
   };
 
   const handleAssigneeChange = (data: any) => {
+    if (!user) return;
+
     const newData = issue.assignees ?? [];
 
     if (newData.includes(data)) newData.splice(newData.indexOf(data), 1);

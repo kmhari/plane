@@ -99,13 +99,13 @@ class IssueStore implements IIssueStore {
     return this.issues?.[projectId]?.[issueType] || null;
   }
 
+  // TODO: params order is different from what is present in components
   updateIssueStructure = async (group_id: string | null, sub_group_id: string | null, issue: IIssue) => {
     const projectId: string | null = issue?.project;
     const issueType = this.getIssueType;
     if (!projectId || !issueType) return null;
 
-    let issues: IIssueGroupedStructure | IIssueGroupWithSubGroupsStructure | IIssueUnGroupedStructure | null =
-      this.getIssues;
+    let issues = this.getIssues;
     if (!issues) return null;
 
     if (issueType === "grouped" && group_id) {
