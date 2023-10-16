@@ -4,6 +4,9 @@ import { useRouter } from "next/router";
 
 import useSWR, { mutate } from "swr";
 
+// store
+import { observer } from "mobx-react-lite";
+import { useMobxStore } from "lib/mobx/store-provider";
 // services
 import estimatesService from "services/project_estimates.service";
 import projectService from "services/project.service";
@@ -34,12 +37,16 @@ import { ESTIMATES_LIST, PROJECT_DETAILS } from "constants/fetch-keys";
 import { truncateText } from "helpers/string.helper";
 
 const EstimatesSettings: NextPage = () => {
-  const [estimateFormOpen, setEstimateFormOpen] = useState(false);
-
-  const [estimateToUpdate, setEstimateToUpdate] = useState<IEstimate | undefined>();
-
+  // router
   const router = useRouter();
   const { workspaceSlug, projectId } = router.query;
+
+  // store
+  const { project: projectStore } = useMobxStore();
+
+  // states
+  const [estimateFormOpen, setEstimateFormOpen] = useState(false);
+  const [estimateToUpdate, setEstimateToUpdate] = useState<IEstimate | undefined>();
 
   const { user } = useUserAuth();
 
@@ -47,12 +54,15 @@ const EstimatesSettings: NextPage = () => {
 
   const { projectDetails } = useProjectDetails();
 
-  const { data: estimatesList } = useSWR<IEstimate[]>(
-    workspaceSlug && projectId ? ESTIMATES_LIST(projectId as string) : null,
+  useSWR<IEstimate[]>(
+    workspaceSlug && projectId ? ESTIMATES_LIST(projectId.toString()) : null,
     workspaceSlug && projectId
-      ? () => estimatesService.getEstimatesList(workspaceSlug as string, projectId as string)
+      ? () => projectStore.fetchProjectEstimates(workspaceSlug.toString(), projectId.toString())
       : null
   );
+
+  // derived values
+  const estimatesList = projectStore.estimates?.[projectId?.toString()!] ?? null;
 
   const editEstimate = (estimate: IEstimate) => {
     setEstimateToUpdate(estimate);
@@ -193,4 +203,4 @@ const EstimatesSettings: NextPage = () => {
   );
 };
 
-export default EstimatesSettings;
+export default observer(EstimatesSettings);

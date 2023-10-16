@@ -60,7 +60,7 @@ export interface IProjectStore {
   fetchProjectStates: (workspaceSlug: string, projectId: string) => Promise<void>;
   fetchProjectLabels: (workspaceSlug: string, projectId: string) => Promise<void>;
   fetchProjectMembers: (workspaceSlug: string, projectId: string) => Promise<void>;
-  fetchProjectEstimates: (workspaceSlug: string, projectId: string) => Promise<void>;
+  fetchProjectEstimates: (workspaceSlug: string, projectId: string) => Promise<any>;
 
   addProjectToFavorites: (workspaceSlug: string, projectId: string) => Promise<any>;
   removeProjectFromFavorites: (workspaceSlug: string, projectId: string) => Promise<any>;
