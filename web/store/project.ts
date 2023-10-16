@@ -71,6 +71,15 @@ export interface IProjectStore {
   createProject: (workspaceSlug: string, data: any) => Promise<any>;
   updateProject: (workspaceSlug: string, projectId: string, data: any) => Promise<any>;
   deleteProject: (workspaceSlug: string, projectId: string) => Promise<void>;
+
+  createLabel: (workspaceSlug: string, projectId: string, data: Partial<IIssueLabels>) => Promise<IIssueLabels>;
+  updateLabel: (
+    workspaceSlug: string,
+    projectId: string,
+    labelId: string,
+    data: Partial<IIssueLabels>
+  ) => Promise<IIssueLabels>;
+  deleteLabel: (workspaceSlug: string, projectId: string, labelId: string) => Promise<void>;
 }
 
 class ProjectStore implements IProjectStore {
@@ -563,6 +572,89 @@ class ProjectStore implements IProjectStore {
       await this.fetchProjects(workspaceSlug);
     } catch (error) {
       console.log("Failed to delete project from project store");
+    }
+  };
+
+  createLabel = async (workspaceSlug: string, projectId: string, data: Partial<IIssueLabels>) => {
+    try {
+      const response = await this.issueService.createIssueLabel(
+        workspaceSlug,
+        projectId,
+        data,
+        this.rootStore.user.currentUser
+      );
+
+      runInAction(() => {
+        this.labels = {
+          ...this.labels,
+          [projectId]: [response, ...(this.labels?.[projectId] || [])],
+        };
+      });
+
+      return response;
+    } catch (error) {
+      console.log("Failed to create label from project store");
+      throw error;
+    }
+  };
+
+  updateLabel = async (workspaceSlug: string, projectId: string, labelId: string, data: Partial<IIssueLabels>) => {
+    const originalLabel = this.getProjectLabelById(labelId);
+
+    runInAction(() => {
+      this.labels = {
+        ...this.labels,
+        [projectId]:
+          this.labels?.[projectId]?.map((label) => (label.id === labelId ? { ...label, ...data } : label)) || [],
+      };
+    });
+
+    try {
+      const response = await this.issueService.patchIssueLabel(
+        workspaceSlug,
+        projectId,
+        labelId,
+        data,
+        this.rootStore.user.currentUser
+      );
+
+      return response;
+    } catch (error) {
+      console.log("Failed to update label from project store");
+      runInAction(() => {
+        this.labels = {
+          ...this.labels,
+          [projectId]: (this.labels?.[projectId] || [])?.map((label) =>
+            label.id === labelId ? { ...label, ...originalLabel } : label
+          ),
+        };
+      });
+      throw error;
+    }
+  };
+
+  deleteLabel = async (workspaceSlug: string, projectId: string, labelId: string) => {
+    const originalLabelList = this.projectLabels;
+
+    runInAction(() => {
+      this.labels = {
+        ...this.labels,
+        [projectId]: (this.labels?.[projectId] || [])?.filter((label) => label.id !== labelId),
+      };
+    });
+
+    try {
+      // deleting using api
+      await this.issueService.deleteIssueLabel(workspaceSlug, projectId, labelId, this.rootStore.user.currentUser);
+    } catch (error) {
+      console.log("Failed to delete label from project store");
+      // reverting back to original label list
+      runInAction(() => {
+        this.labels = {
+          ...this.labels,
+          [projectId]: originalLabelList || [],
+        };
+      });
     }
   };
 }

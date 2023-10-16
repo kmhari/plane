@@ -1,70 +1,42 @@
 import React from "react";
-
 import { useRouter } from "next/router";
-
-import { mutate } from "swr";
-
-// headless ui
 import { Disclosure, Transition } from "@headlessui/react";
-// services
-import issuesService from "services/issue.service";
+
+// store
+import { observer } from "mobx-react-lite";
+import { useMobxStore } from "lib/mobx/store-provider";
 // ui
 import { CustomMenu } from "components/ui";
 // icons
 import { ChevronDownIcon, XMarkIcon, PlusIcon, PencilIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { Component, X } from "lucide-react";
 // types
-import { ICurrentUserResponse, IIssueLabels } from "types";
-// fetch-keys
-import { PROJECT_ISSUE_LABELS } from "constants/fetch-keys";
+import { IIssueLabels } from "types";
 
 type Props = {
   label: IIssueLabels;
   labelChildren: IIssueLabels[];
-  addLabelToGroup: (parentLabel: IIssueLabels) => void;
-  editLabel: (label: IIssueLabels) => void;
   handleLabelDelete: () => void;
-  user: ICurrentUserResponse | undefined;
+  editLabel: (label: IIssueLabels) => void;
+  addLabelToGroup: (parentLabel: IIssueLabels) => void;
 };
 
-export const SingleLabelGroup: React.FC<Props> = ({
-  label,
-  labelChildren,
-  addLabelToGroup,
-  editLabel,
-  handleLabelDelete,
-  user,
-}) => {
+export const ProjectSettingLabelGroup: React.FC<Props> = observer((props) => {
+  const { label, labelChildren, addLabelToGroup, editLabel, handleLabelDelete } = props;
+
+  // router
   const router = useRouter();
   const { workspaceSlug, projectId } = router.query;
+
+  // store
+  const { project: projectStore } = useMobxStore();
 
   const removeFromGroup = (label: IIssueLabels) => {
     if (!workspaceSlug || !projectId) return;
 
-    mutate<IIssueLabels[]>(
-      PROJECT_ISSUE_LABELS(projectId as string),
-      (prevData) =>
-        prevData?.map((l) => {
-          if (l.id === label.id) return { ...l, parent: null };
-
-          return l;
-        }),
-      false
-    );
-
-    issuesService
-      .patchIssueLabel(
-        workspaceSlug as string,
-        projectId as string,
-        label.id,
-        {
-          parent: null,
-        },
-        user
-      )
-      .then(() => {
-        mutate(PROJECT_ISSUE_LABELS(projectId as string));
-      });
+    projectStore.updateLabel(workspaceSlug.toString(), projectId.toString(), label.id, {
+      parent: null,
+    });
   };
 
   return (
@@ -174,4 +146,4 @@ export const SingleLabelGroup: React.FC<Props> = ({
       )}
     </Disclosure>
   );
-};
+});

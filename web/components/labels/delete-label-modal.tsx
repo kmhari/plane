@@ -1,37 +1,39 @@
 import React, { useState } from "react";
-
 import { useRouter } from "next/router";
-
-import { mutate } from "swr";
-
-// headless ui
 import { Dialog, Transition } from "@headlessui/react";
+
+// store
+import { observer } from "mobx-react-lite";
+import { useMobxStore } from "lib/mobx/store-provider";
 // icons
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-// services
-import issuesService from "services/issue.service";
 // hooks
 import useToast from "hooks/use-toast";
 // ui
 import { Button } from "@plane/ui";
 // types
-import type { ICurrentUserResponse, IIssueLabels } from "types";
-// fetch-keys
-import { PROJECT_ISSUE_LABELS } from "constants/fetch-keys";
+import type { IIssueLabels } from "types";
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
   data: IIssueLabels | null;
-  user: ICurrentUserResponse | undefined;
 };
 
-export const DeleteLabelModal: React.FC<Props> = ({ isOpen, onClose, data, user }) => {
-  const [isDeleteLoading, setIsDeleteLoading] = useState(false);
+export const DeleteLabelModal: React.FC<Props> = observer((props) => {
+  const { isOpen, onClose, data } = props;
 
+  // router
   const router = useRouter();
   const { workspaceSlug, projectId } = router.query;
 
+  // store
+  const { project: projectStore } = useMobxStore();
+
+  // states
+  const [isDeleteLoading, setIsDeleteLoading] = useState(false);
+
+  // hooks
   const { setToastAlert } = useToast();
 
   const handleClose = () => {
@@ -44,23 +46,19 @@ export const DeleteLabelModal: React.FC<Props> = ({ isOpen, onClose, data, user 
 
     setIsDeleteLoading(true);
 
-    mutate<IIssueLabels[]>(
-      PROJECT_ISSUE_LABELS(projectId.toString()),
-      (prevData) => (prevData ?? []).filter((p) => p.id !== data.id),
-      false
-    );
-
-    await issuesService
-      .deleteIssueLabel(workspaceSlug.toString(), projectId.toString(), data.id, user)
-      .then(() => handleClose())
-      .catch(() => {
+    await projectStore
+      .deleteLabel(workspaceSlug.toString(), projectId.toString(), data.id)
+      .then(() => {
+        handleClose();
+      })
+      .catch((err) => {
         setIsDeleteLoading(false);
 
-        mutate(PROJECT_ISSUE_LABELS(projectId.toString()));
+        const error = err?.error || "Label could not be deleted. Please try again.";
         setToastAlert({
           type: "error",
           title: "Error!",
-          message: "Label could not be deleted. Please try again.",
+          message: error,
         });
       });
   };
@@ -126,4 +124,4 @@ export const DeleteLabelModal: React.FC<Props> = ({ isOpen, onClose, data, user 
       </Dialog>
     </Transition.Root>
   );
-};
+});

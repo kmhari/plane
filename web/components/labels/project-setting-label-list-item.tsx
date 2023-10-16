@@ -17,12 +17,9 @@ type Props = {
   handleLabelDelete: () => void;
 };
 
-export const SingleLabel: React.FC<Props> = ({
-  label,
-  addLabelToGroup,
-  editLabel,
-  handleLabelDelete,
-}) => {
+export const ProjectSettingLabelItem: React.FC<Props> = (props) => {
+  const { label, addLabelToGroup, editLabel, handleLabelDelete } = props;
+
   const [isMenuActive, setIsMenuActive] = useState(false);
   const actionSectionRef = useRef<HTMLDivElement | null>(null);
 
@@ -39,6 +36,7 @@ export const SingleLabel: React.FC<Props> = ({
         />
         <h6 className="text-sm">{label.name}</h6>
       </div>
+
       <div
         ref={actionSectionRef}
         className={`absolute -top-0.5 right-3 flex items-start gap-3.5 pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 ${
@@ -66,10 +64,7 @@ export const SingleLabel: React.FC<Props> = ({
           </CustomMenu.MenuItem>
         </CustomMenu>
         <div className="py-0.5">
-          <button
-            className="flex h-4 w-4 items-center justify-start gap-2"
-            onClick={handleLabelDelete}
-          >
+          <button className="flex h-4 w-4 items-center justify-start gap-2" onClick={handleLabelDelete}>
             <X className="h-4 w-4  text-custom-sidebar-text-400 flex-shrink-0" />
           </button>
         </div>
