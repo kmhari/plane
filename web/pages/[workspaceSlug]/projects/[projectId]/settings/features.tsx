@@ -2,10 +2,13 @@ import React from "react";
 
 import { useRouter } from "next/router";
 
-import useSWR, { mutate } from "swr";
+import useSWR from "swr";
+
+// store
+import { observer } from "mobx-react-lite";
+import { useMobxStore } from "lib/mobx/store-provider";
 
 // services
-import projectService from "services/project.service";
 import trackEventServices, { MiscellaneousEventType } from "services/track_event.service";
 // layouts
 import { ProjectAuthorizationWrapper } from "layouts/auth-layout-legacy";
@@ -25,7 +28,7 @@ import { ContrastOutlined } from "@mui/icons-material";
 import { IProject } from "types";
 import type { NextPage } from "next";
 // fetch-keys
-import { PROJECTS_LIST, PROJECT_DETAILS, USER_PROJECT_VIEW } from "constants/fetch-keys";
+import { PROJECT_DETAILS, USER_PROJECT_VIEW } from "constants/fetch-keys";
 // helper
 import { truncateText } from "helpers/string.helper";
 
@@ -81,59 +84,57 @@ const getEventType = (feature: string, toggle: boolean): MiscellaneousEventType 
 };
 
 const FeaturesSettings: NextPage = () => {
+  // router
   const router = useRouter();
   const { workspaceSlug, projectId } = router.query;
 
-  const { user } = useUserAuth();
+  // store
+  const { project: projectStore, user: userStore } = useMobxStore();
 
+  // hooks
+  const { user } = useUserAuth();
   const { setToastAlert } = useToast();
 
-  const { data: projectDetails } = useSWR(
+  // for api calls
+  useSWR(
     workspaceSlug && projectId ? PROJECT_DETAILS(projectId as string) : null,
-    workspaceSlug && projectId ? () => projectService.getProject(workspaceSlug as string, projectId as string) : null
-  );
-
-  const { data: memberDetails } = useSWR(
-    workspaceSlug && projectId ? USER_PROJECT_VIEW(projectId.toString()) : null,
     workspaceSlug && projectId
-      ? () => projectService.projectMemberMe(workspaceSlug.toString(), projectId.toString())
+      ? () => projectStore.fetchProjectDetails(workspaceSlug.toString(), projectId.toString())
       : null
   );
+
+  useSWR(
+    workspaceSlug && projectId ? USER_PROJECT_VIEW(projectId.toString()) : null,
+    workspaceSlug && projectId
+      ? () => projectStore.fetchProjectMembers(workspaceSlug.toString(), projectId.toString())
+      : null
+  );
+
+  // derived values
+  const projectDetails = projectStore.project_details[projectId?.toString()!] ?? null;
+  const currentUser = userStore.currentUser;
+  const memberDetails =
+    projectStore.members?.[projectId?.toString()!]?.find((member) => member.member.id === currentUser?.id) ?? null;
 
   const handleSubmit = async (formData: Partial<IProject>) => {
     if (!workspaceSlug || !projectId || !projectDetails) return;
 
-    mutate<IProject[]>(
-      PROJECTS_LIST(workspaceSlug.toString(), {
-        is_favorite: "all",
-      }),
-      (prevData) => prevData?.map((p) => (p.id === projectId ? { ...p, ...formData } : p)),
-      false
-    );
-
-    mutate<IProject>(
-      PROJECT_DETAILS(projectId as string),
-      (prevData) => {
-        if (!prevData) return prevData;
-
-        return { ...prevData, ...formData };
-      },
-      false
-    );
-
-    setToastAlert({
-      type: "success",
-      title: "Success!",
-      message: "Project feature updated successfully.",
-    });
-
-    await projectService.updateProject(workspaceSlug as string, projectId as string, formData, user).catch(() =>
-      setToastAlert({
-        type: "error",
-        title: "Error!",
-        message: "Project feature could not be updated. Please try again.",
+    await projectStore
+      .updateProject(workspaceSlug.toString(), projectId.toString(), formData)
+      .then(() => {
+        setToastAlert({
+          type: "success",
+          title: "Success!",
+          message: "Project feature updated successfully.",
+        });
       })
-    );
+      .catch(() => {
+        setToastAlert({
+          type: "error",
+          title: "Error!",
+          message: "Project feature could not be updated. Please try again.",
+        });
+      });
   };
 
   const isAdmin = memberDetails?.role === 20;
@@ -204,4 +205,4 @@ const FeaturesSettings: NextPage = () => {
   );
 };
 
-export default FeaturesSettings;
+export default observer(FeaturesSettings);
