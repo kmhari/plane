@@ -856,7 +856,7 @@ class ProjectStore implements IProjectStore {
     groupIndex: number
   ) => {
     const SEQUENCE_GAP = 15000;
-    let newSequence = 15000;
+    let newSequence = SEQUENCE_GAP;
 
     const states = this.projectStates || [];
     const groupedStates = groupBy(states || [], "group");
@@ -877,7 +877,9 @@ class ProjectStore implements IProjectStore {
       if (state.id === stateId) return { ...state, sequence: newSequence };
       return state;
     });
-    const newOrderedStateGroups = orderStateGroups(groupBy(newStateList, "group"));
+    const newOrderedStateGroups = orderStateGroups(
+      groupBy(orderArrayBy(newStateList, "sequence", "ascending"), "group")
+    );
 
     runInAction(() => {
       this.states = {

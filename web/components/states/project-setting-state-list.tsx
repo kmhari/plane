@@ -7,8 +7,6 @@ import useSWR from "swr";
 // store
 import { observer } from "mobx-react-lite";
 import { useMobxStore } from "lib/mobx/store-provider";
-// hooks
-import useUserAuth from "hooks/use-user-auth";
 // components
 import { CreateUpdateStateInline, DeleteStateModal, ProjectSettingListItem, StateGroup } from "components/states";
 // ui
@@ -33,9 +31,6 @@ export const ProjectSettingStateList: React.FC = observer(() => {
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [selectDeleteState, setSelectDeleteState] = useState<string | null>(null);
 
-  // hooks
-  const { user } = useUserAuth();
-
   useSWR(
     workspaceSlug && projectId ? "PROJECT_DETAILS" : null,
     workspaceSlug && projectId
@@ -55,9 +50,6 @@ export const ProjectSettingStateList: React.FC = observer(() => {
   const projectDetails = projectStore.project_details[projectId?.toString()!] ?? null;
   const orderedStateGroups = orderStateGroups(states);
   const statesList = getStatesList(orderedStateGroups);
-
-  console.log("states", states);
-  console.log("statesList", statesList);
 
   return (
     <>
@@ -104,7 +96,6 @@ export const ProjectSettingStateList: React.FC = observer(() => {
                           statesList={statesList ?? []}
                           handleEditState={() => setSelectedState(state.id)}
                           handleDeleteState={() => setSelectDeleteState(state.id)}
-                          user={user}
                         />
                       ) : (
                         <div className="border-b border-custom-border-200 last:border-b-0" key={state.id}>

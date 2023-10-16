@@ -1,12 +1,9 @@
 import { useState } from "react";
 import { useRouter } from "next/router";
-import { mutate } from "swr";
 
 // store
 import { observer } from "mobx-react-lite";
 import { useMobxStore } from "lib/mobx/store-provider";
-// services
-import stateService from "services/project_state.service";
 // ui
 import { Tooltip } from "@plane/ui";
 // icons
@@ -16,12 +13,8 @@ import { Pencil, X } from "lucide-react";
 
 // helpers
 import { addSpaceIfCamelCase } from "helpers/string.helper";
-import { groupBy, orderArrayBy } from "helpers/array.helper";
-import { orderStateGroups } from "helpers/state.helper";
 // types
-import { ICurrentUserResponse, IState } from "types";
-// fetch-keys
-import { STATES_LIST } from "constants/fetch-keys";
+import { IState } from "types";
 
 type Props = {
   index: number;
@@ -29,11 +22,10 @@ type Props = {
   statesList: IState[];
   handleEditState: () => void;
   handleDeleteState: () => void;
-  user: ICurrentUserResponse | undefined;
 };
 
 export const ProjectSettingListItem: React.FC<Props> = observer((props) => {
-  const { index, state, statesList, handleEditState, handleDeleteState, user } = props;
+  const { index, state, statesList, handleEditState, handleDeleteState } = props;
 
   // router
   const router = useRouter();
@@ -63,38 +55,6 @@ export const ProjectSettingListItem: React.FC<Props> = observer((props) => {
     if (!workspaceSlug || !projectId) return;
 
     projectStore.moveStatePosition(workspaceSlug.toString(), projectId.toString(), state.id, direction, index);
-
-    // let newSequence = 15000;
-    // if (direction === "up") {
-    //   if (index === 1) newSequence = groupStates[0].sequence - 15000;
-    //   else newSequence = (groupStates[index - 2].sequence + groupStates[index - 1].sequence) / 2;
-    // } else {
-    //   if (index === groupLength - 2) newSequence = groupStates[groupLength - 1].sequence + 15000;
-    //   else newSequence = (groupStates[index + 2].sequence + groupStates[index + 1].sequence) / 2;
-    // }
-    // let newStatesList = statesList.map((s) => ({
-    //   ...s,
-    //   sequence: s.id === state.id ? newSequence : s.sequence,
-    // }));
-    // newStatesList = orderArrayBy(newStatesList, "sequence", "ascending");
-    // mutate(STATES_LIST(projectId as string), orderStateGroups(groupBy(newStatesList, "group")), false);
-    // stateService
-    //   .patchState(
-    //     workspaceSlug as string,
-    //     projectId as string,
-    //     state.id,
-    //     {
-    //       sequence: newSequence,
-    //     },
-    //     user
-    //   )
-    //   .then((res) => {
-    //     console.log(res);
-    //     mutate(STATES_LIST(projectId as string));
-    //   })
-    //   .catch((err) => {
-    //     console.error(err);
-    //   });
   };
 
   return (

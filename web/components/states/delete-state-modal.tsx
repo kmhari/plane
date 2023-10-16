@@ -68,43 +68,6 @@ export const DeleteStateModal: React.FC<Props> = observer((props) => {
       .finally(() => {
         setIsDeleteLoading(false);
       });
-
-    // await stateServices
-    //   .deleteState(workspaceSlug as string, data.project, data.id, user)
-    //   .then(() => {
-    //     mutate<IStateResponse>(
-    //       STATES_LIST(data.project),
-    //       (prevData) => {
-    //         if (!prevData) return prevData;
-
-    //         const stateGroup = [...prevData[data.group]].filter((s) => s.id !== data.id);
-
-    //         return {
-    //           ...prevData,
-    //           [data.group]: stateGroup,
-    //         };
-    //       },
-    //       false
-    //     );
-    //     handleClose();
-    //   })
-    //   .catch((err) => {
-    //     setIsDeleteLoading(false);
-
-    //     if (err.status === 400)
-    //       setToastAlert({
-    //         type: "error",
-    //         title: "Error!",
-    //         message:
-    //           "This state contains some issues within it, please move them to some other state to delete this state.",
-    //       });
-    //     else
-    //       setToastAlert({
-    //         type: "error",
-    //         title: "Error!",
-    //         message: "State could not be deleted. Please try again.",
-    //       });
-    //   });
   };
 
   return (
