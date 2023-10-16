@@ -1,36 +1,37 @@
 import React, { useState } from "react";
-
 import { useRouter } from "next/router";
-
-import { mutate } from "swr";
-
-// headless ui
 import { Dialog, Transition } from "@headlessui/react";
+
+// store
+import { observer } from "mobx-react-lite";
+import { useMobxStore } from "lib/mobx/store-provider";
 // icons
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-// services
-import stateServices from "services/project_state.service";
 // hooks
 import useToast from "hooks/use-toast";
 // ui
 import { Button } from "@plane/ui";
 // types
-import type { ICurrentUserResponse, IState, IStateResponse } from "types";
-// fetch-keys
-import { STATES_LIST } from "constants/fetch-keys";
+import type { IState } from "types";
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
   data: IState | null;
-  user: ICurrentUserResponse | undefined;
 };
 
-export const DeleteStateModal: React.FC<Props> = ({ isOpen, onClose, data, user }) => {
-  const [isDeleteLoading, setIsDeleteLoading] = useState(false);
+export const DeleteStateModal: React.FC<Props> = observer((props) => {
+  const { isOpen, onClose, data } = props;
 
+  // router
   const router = useRouter();
   const { workspaceSlug } = router.query;
+
+  // store
+  const { project: projectStore } = useMobxStore();
+
+  // states
+  const [isDeleteLoading, setIsDeleteLoading] = useState(false);
 
   const { setToastAlert } = useToast();
 
@@ -44,28 +45,12 @@ export const DeleteStateModal: React.FC<Props> = ({ isOpen, onClose, data, user 
 
     setIsDeleteLoading(true);
 
-    await stateServices
-      .deleteState(workspaceSlug as string, data.project, data.id, user)
+    await projectStore
+      .deleteState(workspaceSlug.toString(), data.project, data.id)
       .then(() => {
-        mutate<IStateResponse>(
-          STATES_LIST(data.project),
-          (prevData) => {
-            if (!prevData) return prevData;
-
-            const stateGroup = [...prevData[data.group]].filter((s) => s.id !== data.id);
-
-            return {
-              ...prevData,
-              [data.group]: stateGroup,
-            };
-          },
-          false
-        );
         handleClose();
       })
       .catch((err) => {
-        setIsDeleteLoading(false);
-
         if (err.status === 400)
           setToastAlert({
             type: "error",
@@ -79,7 +64,47 @@ export const DeleteStateModal: React.FC<Props> = ({ isOpen, onClose, data, user 
             title: "Error!",
             message: "State could not be deleted. Please try again.",
           });
+      })
+      .finally(() => {
+        setIsDeleteLoading(false);
       });
+
+    // await stateServices
+    //   .deleteState(workspaceSlug as string, data.project, data.id, user)
+    //   .then(() => {
+    //     mutate<IStateResponse>(
+    //       STATES_LIST(data.project),
+    //       (prevData) => {
+    //         if (!prevData) return prevData;
+
+    //         const stateGroup = [...prevData[data.group]].filter((s) => s.id !== data.id);
+
+    //         return {
+    //           ...prevData,
+    //           [data.group]: stateGroup,
+    //         };
+    //       },
+    //       false
+    //     );
+    //     handleClose();
+    //   })
+    //   .catch((err) => {
+    //     setIsDeleteLoading(false);
+
+    //     if (err.status === 400)
+    //       setToastAlert({
+    //         type: "error",
+    //         title: "Error!",
+    //         message:
+    //           "This state contains some issues within it, please move them to some other state to delete this state.",
+    //       });
+    //     else
+    //       setToastAlert({
+    //         type: "error",
+    //         title: "Error!",
+    //         message: "State could not be deleted. Please try again.",
+    //       });
+    //   });
   };
 
   return (
@@ -143,4 +168,4 @@ export const DeleteStateModal: React.FC<Props> = ({ isOpen, onClose, data, user 
       </Dialog>
     </Transition.Root>
   );
-};
+});

@@ -2,14 +2,11 @@
 import { IState, IStateResponse } from "types";
 
 export const orderStateGroups = (
-  unorderedStateGroups: IStateResponse | undefined
+  unorderedStateGroups: IStateResponse | undefined | null
 ): IStateResponse | undefined => {
   if (!unorderedStateGroups) return undefined;
 
-  return Object.assign(
-    { backlog: [], unstarted: [], started: [], completed: [], cancelled: [] },
-    unorderedStateGroups
-  );
+  return Object.assign({ backlog: [], unstarted: [], started: [], completed: [], cancelled: [] }, unorderedStateGroups);
 };
 
 export const getStatesList = (stateGroups: IStateResponse | undefined): IState[] | undefined => {

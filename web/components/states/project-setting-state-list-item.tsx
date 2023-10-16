@@ -1,9 +1,10 @@
 import { useState } from "react";
-
 import { useRouter } from "next/router";
-
 import { mutate } from "swr";
 
+// store
+import { observer } from "mobx-react-lite";
+import { useMobxStore } from "lib/mobx/store-provider";
 // services
 import stateService from "services/project_state.service";
 // ui
@@ -31,121 +32,69 @@ type Props = {
   user: ICurrentUserResponse | undefined;
 };
 
-export const SingleState: React.FC<Props> = ({
-  index,
-  state,
-  statesList,
-  handleEditState,
-  handleDeleteState,
-  user,
-}) => {
-  const [isSubmitting, setIsSubmitting] = useState(false);
+export const ProjectSettingListItem: React.FC<Props> = observer((props) => {
+  const { index, state, statesList, handleEditState, handleDeleteState, user } = props;
 
+  // router
   const router = useRouter();
   const { workspaceSlug, projectId } = router.query;
 
+  // store
+  const { project: projectStore } = useMobxStore();
+
+  // states
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // derived values
   const groupStates = statesList.filter((s) => s.group === state.group);
   const groupLength = groupStates.length;
 
   const handleMakeDefault = () => {
+    if (!workspaceSlug || !projectId) return;
+
     setIsSubmitting(true);
 
-    const currentDefaultState = statesList.find((s) => s.default);
-
-    let newStatesList = statesList.map((s) => ({
-      ...s,
-      default: s.id === state.id ? true : s.id === currentDefaultState?.id ? false : s.default,
-    }));
-    newStatesList = orderArrayBy(newStatesList, "sequence", "ascending");
-
-    mutate(STATES_LIST(projectId as string), orderStateGroups(groupBy(newStatesList, "group")), false);
-
-    if (currentDefaultState)
-      stateService
-        .patchState(
-          workspaceSlug as string,
-          projectId as string,
-          currentDefaultState?.id ?? "",
-          {
-            default: false,
-          },
-          user
-        )
-        .then(() => {
-          stateService
-            .patchState(
-              workspaceSlug as string,
-              projectId as string,
-              state.id,
-              {
-                default: true,
-              },
-              user
-            )
-            .then(() => {
-              mutate(STATES_LIST(projectId as string));
-              setIsSubmitting(false);
-            })
-            .catch(() => {
-              setIsSubmitting(false);
-            });
-        });
-    else
-      stateService
-        .patchState(
-          workspaceSlug as string,
-          projectId as string,
-          state.id,
-          {
-            default: true,
-          },
-          user
-        )
-        .then(() => {
-          mutate(STATES_LIST(projectId as string));
-          setIsSubmitting(false);
-        })
-        .catch(() => {
-          setIsSubmitting(false);
-        });
+    projectStore.markStateAsDefault(workspaceSlug.toString(), projectId.toString(), state.id).finally(() => {
+      setIsSubmitting(false);
+    });
   };
 
   const handleMove = (state: IState, direction: "up" | "down") => {
-    let newSequence = 15000;
+    if (!workspaceSlug || !projectId) return;
 
-    if (direction === "up") {
-      if (index === 1) newSequence = groupStates[0].sequence - 15000;
-      else newSequence = (groupStates[index - 2].sequence + groupStates[index - 1].sequence) / 2;
-    } else {
-      if (index === groupLength - 2) newSequence = groupStates[groupLength - 1].sequence + 15000;
-      else newSequence = (groupStates[index + 2].sequence + groupStates[index + 1].sequence) / 2;
-    }
+    projectStore.moveStatePosition(workspaceSlug.toString(), projectId.toString(), state.id, direction, index);
 
-    let newStatesList = statesList.map((s) => ({
-      ...s,
-      sequence: s.id === state.id ? newSequence : s.sequence,
-    }));
-    newStatesList = orderArrayBy(newStatesList, "sequence", "ascending");
-
-    mutate(STATES_LIST(projectId as string), orderStateGroups(groupBy(newStatesList, "group")), false);
-
-    stateService
-      .patchState(
-        workspaceSlug as string,
-        projectId as string,
-        state.id,
-        {
-          sequence: newSequence,
-        },
-        user
-      )
-      .then((res) => {
-        console.log(res);
-        mutate(STATES_LIST(projectId as string));
-      })
-      .catch((err) => {
-        console.error(err);
-      });
+    // let newSequence = 15000;
+    // if (direction === "up") {
+    //   if (index === 1) newSequence = groupStates[0].sequence - 15000;
+    //   else newSequence = (groupStates[index - 2].sequence + groupStates[index - 1].sequence) / 2;
+    // } else {
+    //   if (index === groupLength - 2) newSequence = groupStates[groupLength - 1].sequence + 15000;
+    //   else newSequence = (groupStates[index + 2].sequence + groupStates[index + 1].sequence) / 2;
+    // }
+    // let newStatesList = statesList.map((s) => ({
+    //   ...s,
+    //   sequence: s.id === state.id ? newSequence : s.sequence,
+    // }));
+    // newStatesList = orderArrayBy(newStatesList, "sequence", "ascending");
+    // mutate(STATES_LIST(projectId as string), orderStateGroups(groupBy(newStatesList, "group")), false);
+    // stateService
+    //   .patchState(
+    //     workspaceSlug as string,
+    //     projectId as string,
+    //     state.id,
+    //     {
+    //       sequence: newSequence,
+    //     },
+    //     user
+    //   )
+    //   .then((res) => {
+    //     console.log(res);
+    //     mutate(STATES_LIST(projectId as string));
+    //   })
+    //   .catch((err) => {
+    //     console.error(err);
+    //   });
   };
 
   return (
@@ -222,4 +171,4 @@ export const SingleState: React.FC<Props> = ({
       </div>
     </div>
   );
-};
+});

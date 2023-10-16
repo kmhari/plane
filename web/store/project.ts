@@ -7,6 +7,8 @@ import { ProjectService } from "services/project.service";
 import { IssueService } from "services/issue.service";
 import { ProjectStateServices } from "services/project_state.service";
 import { ProjectEstimateServices } from "services/project_estimates.service";
+import { groupBy, orderArrayBy } from "helpers/array.helper";
+import { orderStateGroups } from "helpers/state.helper";
 
 export interface IProjectStore {
   loader: boolean;
@@ -72,6 +74,7 @@ export interface IProjectStore {
   updateProject: (workspaceSlug: string, projectId: string, data: any) => Promise<any>;
   deleteProject: (workspaceSlug: string, projectId: string) => Promise<void>;
 
+  // labels
   createLabel: (workspaceSlug: string, projectId: string, data: Partial<IIssueLabels>) => Promise<IIssueLabels>;
   updateLabel: (
     workspaceSlug: string,
@@ -80,6 +83,19 @@ export interface IProjectStore {
     data: Partial<IIssueLabels>
   ) => Promise<IIssueLabels>;
   deleteLabel: (workspaceSlug: string, projectId: string, labelId: string) => Promise<void>;
+
+  // states
+  createState: (workspaceSlug: string, projectId: string, data: Partial<IState>) => Promise<IState>;
+  updateState: (workspaceSlug: string, projectId: string, stateId: string, data: Partial<IState>) => Promise<IState>;
+  deleteState: (workspaceSlug: string, projectId: string, stateId: string) => Promise<void>;
+  markStateAsDefault: (workspaceSlug: string, projectId: string, stateId: string) => Promise<void>;
+  moveStatePosition: (
+    workspaceSlug: string,
+    projectId: string,
+    stateId: string,
+    direction: "up" | "down",
+    groupIndex: number
+  ) => Promise<void>;
 }
 
 class ProjectStore implements IProjectStore {
@@ -162,6 +178,18 @@ class ProjectStore implements IProjectStore {
       createProject: action,
       updateProject: action,
       leaveProject: action,
+
+      // labels
+      createLabel: action,
+      updateLabel: action,
+      deleteLabel: action,
+
+      // states
+      createState: action,
+      updateState: action,
+      deleteState: action,
+      markStateAsDefault: action,
+      moveStatePosition: action,
     });
 
     this.rootStore = _rootStore;
@@ -653,6 +681,227 @@ class ProjectStore implements IProjectStore {
         this.labels = {
           ...this.labels,
           [projectId]: originalLabelList || [],
+        };
+      });
+    }
+  };
+
+  createState = async (workspaceSlug: string, projectId: string, data: Partial<IState>) => {
+    try {
+      const response = await this.stateService.createState(
+        workspaceSlug,
+        projectId,
+        data,
+        this.rootStore.user.currentUser
+      );
+
+      runInAction(() => {
+        this.states = {
+          ...this.states,
+          [projectId]: {
+            ...this.states?.[projectId],
+            [response.group]: [...(this.states?.[projectId]?.[response.group] || []), response],
+          },
+        };
+      });
+
+      return response;
+    } catch (error) {
+      console.log("Failed to create state from project store");
+      throw error;
+    }
+  };
+
+  updateState = async (workspaceSlug: string, projectId: string, stateId: string, data: Partial<IState>) => {
+    const originalStates = this.projectStates;
+
+    runInAction(() => {
+      this.states = {
+        ...this.states,
+        [projectId]: {
+          ...this.states?.[projectId],
+          [data.group as string]: (this.states?.[projectId]?.[data.group as string] || []).map((state) =>
+            state.id === stateId ? { ...state, ...data } : state
+          ),
+        },
+      };
+    });
+
+    try {
+      const response = await this.stateService.patchState(
+        workspaceSlug,
+        projectId,
+        stateId,
+        data,
+        this.rootStore.user.currentUser
+      );
+
+      runInAction(() => {
+        this.states = {
+          ...this.states,
+          [projectId]: {
+            ...this.states?.[projectId],
+            [response.group]: (this.states?.[projectId]?.[response.group] || []).map((state) =>
+              state.id === stateId ? { ...state, ...response } : state
+            ),
+          },
+        };
+      });
+
+      return response;
+    } catch (error) {
+      console.log("Failed to update state from project store");
+      runInAction(() => {
+        this.states = {
+          ...this.states,
+          [projectId]: {
+            ...this.states?.[projectId],
+            [data.group as string]: originalStates || [],
+          },
+        };
+      });
+      throw error;
+    }
+  };
+
+  deleteState = async (workspaceSlug: string, projectId: string, stateId: string) => {
+    const originalStates = this.projectStates;
+
+    try {
+      runInAction(() => {
+        this.states = {
+          ...this.states,
+          [projectId]: {
+            ...this.states?.[projectId],
+            [originalStates?.[0]?.group || ""]: (
+              this.states?.[projectId]?.[originalStates?.[0]?.group || ""] || []
+            ).filter((state) => state.id !== stateId),
+          },
+        };
+      });
+
+      // deleting using api
+      await this.stateService.deleteState(workspaceSlug, projectId, stateId, this.rootStore.user.currentUser);
+    } catch (error) {
+      console.log("Failed to delete state from project store");
+      // reverting back to original label list
+      runInAction(() => {
+        this.states = {
+          ...this.states,
+          [projectId]: {
+            ...this.states?.[projectId],
+            [originalStates?.[0]?.group || ""]: originalStates || [],
+          },
+        };
+      });
+    }
+  };
+
+  markStateAsDefault = async (workspaceSlug: string, projectId: string, stateId: string) => {
+    const states = this.projectStates;
+    const currentDefaultState = states?.find((state) => state.default);
+
+    let newStateList =
+      states?.map((state) => {
+        if (state.id === stateId) return { ...state, default: true };
+        if (state.id === currentDefaultState?.id) return { ...state, default: false };
+        return state;
+      }) ?? [];
+    newStateList = orderArrayBy(newStateList, "sequence", "ascending");
+
+    const newOrderedStateGroups = orderStateGroups(groupBy(newStateList, "group"));
+    const oldOrderedStateGroup = this.states?.[projectId] || {}; // for reverting back to old state group if api fails
+
+    runInAction(() => {
+      this.states = {
+        ...this.states,
+        [projectId]: newOrderedStateGroups || {},
+      };
+    });
+
+    // updating using api
+    try {
+      this.stateService.patchState(
+        workspaceSlug,
+        projectId,
+        stateId,
+        { default: true },
+        this.rootStore.user.currentUser
+      );
+
+      if (currentDefaultState)
+        this.stateService.patchState(
+          workspaceSlug,
+          projectId,
+          currentDefaultState.id,
+          { default: false },
+          this.rootStore.user.currentUser
+        );
+    } catch (err) {
+      console.log("Failed to mark state as default");
+      runInAction(() => {
+        this.states = {
+          ...this.states,
+          [projectId]: oldOrderedStateGroup,
+        };
+      });
+    }
+  };
+
+  moveStatePosition = async (
+    workspaceSlug: string,
+    projectId: string,
+    stateId: string,
+    direction: "up" | "down",
+    groupIndex: number
+  ) => {
+    const SEQUENCE_GAP = 15000;
+    let newSequence = 15000;
+
+    const states = this.projectStates || [];
+    const groupedStates = groupBy(states || [], "group");
+
+    const selectedState = states?.find((state) => state.id === stateId);
+    const groupStates = states?.filter((state) => state.group === selectedState?.group);
+    const groupLength = groupStates.length;
+
+    if (direction === "up") {
+      if (groupIndex === 1) newSequence = groupStates[0].sequence - SEQUENCE_GAP;
+      else newSequence = (groupStates[groupIndex - 2].sequence + groupStates[groupIndex - 1].sequence) / 2;
+    } else {
+      if (groupIndex === groupLength - 2) newSequence = groupStates[groupLength - 1].sequence + SEQUENCE_GAP;
+      else newSequence = (groupStates[groupIndex + 2].sequence + groupStates[groupIndex + 1].sequence) / 2;
+    }
+
+    const newStateList = states?.map((state) => {
+      if (state.id === stateId) return { ...state, sequence: newSequence };
+      return state;
+    });
+    const newOrderedStateGroups = orderStateGroups(groupBy(newStateList, "group"));
+
+    runInAction(() => {
+      this.states = {
+        ...this.states,
+        [projectId]: newOrderedStateGroups || {},
+      };
+    });
+
+    // updating using api
+    try {
+      await this.stateService.patchState(
+        workspaceSlug,
+        projectId,
+        stateId,
+        { sequence: newSequence },
+        this.rootStore.user.currentUser
+      );
+    } catch (err) {
+      console.log("Failed to move state position");
+      // reverting back to old state group if api fails
+      runInAction(() => {
+        this.states = {
+          ...this.states,
+          [projectId]: groupedStates,
         };
       });
     }
