@@ -5,9 +5,11 @@ import Link from "next/link";
 
 import useSWR, { mutate } from "swr";
 
+// store
+import { observer } from "mobx-react-lite";
+import { useMobxStore } from "lib/mobx/store-provider";
 // services
 import projectService from "services/project.service";
-import workspaceService from "services/workspace.service";
 // hooks
 import useToast from "hooks/use-toast";
 import useUser from "hooks/use-user";
@@ -22,10 +24,10 @@ import SendProjectInvitationModal from "components/project/send-project-invitati
 import { MemberSelect, SettingsSidebar } from "components/project";
 // ui
 import { Button, Loader } from "@plane/ui";
-import { CustomMenu, CustomSearchSelect, CustomSelect, Icon } from "components/ui";
+import { CustomMenu, CustomSelect, Icon } from "components/ui";
 import { BreadcrumbItem, Breadcrumbs } from "components/breadcrumbs";
 // icons
-import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon } from "@heroicons/react/24/outline";
 // types
 import type { NextPage } from "next";
 import { IProject, IUserLite, IWorkspace } from "types";
@@ -34,10 +36,8 @@ import {
   PROJECTS_LIST,
   PROJECT_DETAILS,
   PROJECT_INVITATIONS_WITH_EMAIL,
-  PROJECT_MEMBERS,
   PROJECT_MEMBERS_WITH_EMAIL,
   USER_PROJECT_VIEW,
-  WORKSPACE_DETAILS,
 } from "constants/fetch-keys";
 // constants
 import { ROLE } from "constants/workspace";
@@ -50,14 +50,19 @@ const defaultValues: Partial<IProject> = {
 };
 
 const MembersSettings: NextPage = () => {
+  // router
+  const router = useRouter();
+  const { workspaceSlug, projectId } = router.query;
+
+  // store
+  const { project: projectStore, workspace: workspaceStore } = useMobxStore();
+
+  // states
   const [inviteModal, setInviteModal] = useState(false);
   const [selectedRemoveMember, setSelectedRemoveMember] = useState<string | null>(null);
   const [selectedInviteRemoveMember, setSelectedInviteRemoveMember] = useState<string | null>(null);
 
   const { setToastAlert } = useToast();
-
-  const router = useRouter();
-  const { workspaceSlug, projectId } = router.query;
 
   const { user } = useUser();
   const { projectDetails } = useProjectDetails();
@@ -74,16 +79,10 @@ const MembersSettings: NextPage = () => {
     formState: { isSubmitting },
   } = useForm<IProject>({ defaultValues });
 
-  const { data: activeWorkspace } = useSWR(workspaceSlug ? WORKSPACE_DETAILS(workspaceSlug as string) : null, () =>
-    workspaceSlug ? workspaceService.getWorkspace(workspaceSlug as string) : null
-  );
-
-  const { data: people } = useSWR(
-    workspaceSlug && projectId ? PROJECT_MEMBERS(projectId as string) : null,
-    workspaceSlug && projectId
-      ? () => projectService.projectMembers(workspaceSlug as string, projectId as string)
-      : null
-  );
+  // FIXME: if this is need to fetch workspace details then uncomment this
+  // useSWR(workspaceSlug ? WORKSPACE_DETAILS(workspaceSlug as string) : null, () =>
+  //   workspaceSlug ? workspaceStore.error : null
+  // );
 
   const { data: projectMembers, mutate: mutateMembers } = useSWR(
     workspaceSlug && projectId ? PROJECT_MEMBERS_WITH_EMAIL(workspaceSlug.toString(), projectId.toString()) : null,
@@ -105,6 +104,9 @@ const MembersSettings: NextPage = () => {
       ? () => projectService.projectMemberMe(workspaceSlug.toString(), projectId.toString())
       : null
   );
+
+  // derived values
+  const activeWorkspace = workspaceStore.currentWorkspace;
 
   const members = [
     ...(projectMembers?.map((item) => ({
@@ -460,4 +462,4 @@ const MembersSettings: NextPage = () => {
   );
 };
 
-export default MembersSettings;
+export default observer(MembersSettings);
