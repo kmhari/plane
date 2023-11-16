@@ -30,6 +30,8 @@ const defaultValues = {
   value4: "",
   value5: "",
   value6: "",
+  value7: "",
+  value8: "",
 };
 
 type FormValues = typeof defaultValues;
@@ -157,7 +159,7 @@ export const CreateUpdateEstimateModal: React.FC<Props> = observer((props) => {
       estimate_points: [],
     };
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
       const point = {
         key: i,
         value: formData[`value${i + 1}` as keyof FormValues],
@@ -186,6 +188,8 @@ export const CreateUpdateEstimateModal: React.FC<Props> = observer((props) => {
         value4: data.points[3]?.value,
         value5: data.points[4]?.value,
         value6: data.points[5]?.value,
+        value7: data.points[6]?.value,
+        value8: data.points[7]?.value,
       });
     else reset({ ...defaultValues });
   }, [data, reset]);
@@ -261,7 +265,7 @@ export const CreateUpdateEstimateModal: React.FC<Props> = observer((props) => {
                       {/* list of all the points */}
                       {/* since they are all the same, we can use a loop to render them */}
                       <div className="grid grid-cols-3 gap-3">
-                        {Array(6)
+                        {Array(8)
                           .fill(0)
                           .map((_, i) => (
                             <div className="flex items-center">
