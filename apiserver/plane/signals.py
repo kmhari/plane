@@ -9,7 +9,7 @@ def calculate_consumed_hours(instance, created, **kwargs):
     try:
         print("New State : {}".format(instance.old_value))
         issue_id = instance.issue_id
-        if created and instance.old_value == 'In Progress':
+        if created and instance.field == 'state' and instance.old_value == 'In Progress':
             issue = Issue.objects.get(pk=issue_id)
             obj = IssueActivity.objects.filter(issue_id = issue_id, new_value='In Progress').last()
             issue.time_consumed = issue.time_consumed + int(((int(time.time()) - obj.epoch) / 60))
