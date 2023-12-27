@@ -62,6 +62,8 @@ class Issue(ProjectBaseModel):
     description = models.JSONField(blank=True, default=dict)
     description_html = models.TextField(blank=True, default="<p></p>")
     description_stripped = models.TextField(blank=True, null=True)
+    time_consumed = models.SmallIntegerField(default=0)
+
     priority = models.CharField(
         max_length=30,
         choices=PRIORITY_CHOICES,
@@ -208,7 +210,26 @@ class IssueRelation(ProjectBaseModel):
         ordering = ("-created_at",)
 
     def __str__(self):
-        return f"{self.issue.name} {self.related_issue.name}"    
+        return f"{self.issue.name} {self.related_issue.name}"
+
+class IssueMention(ProjectBaseModel):
+    issue = models.ForeignKey(
+        Issue, on_delete=models.CASCADE, related_name="issue_mention"
+    )
+    mention = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="issue_mention",
+    )
+    class Meta:
+        unique_together = ["issue", "mention"]
+        verbose_name = "Issue Mention"
+        verbose_name_plural = "Issue Mentions"
+        db_table = "issue_mentions"
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"{self.issue.name} {self.mention.email}"
 
 
 class IssueAssignee(ProjectBaseModel):
