@@ -202,6 +202,8 @@ def track_description(
                     )
                 )
 
+        print("New State : {}".format(old_state.name))
+
 
 # Track changes in issue target date
 def track_target_date(
