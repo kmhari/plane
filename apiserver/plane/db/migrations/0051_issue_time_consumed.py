@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0050_user_use_case_alter_workspace_organization_size'),
+        ('db', '0046_alter_analyticview_created_by_and_more'),
     ]
 
     operations = [
