@@ -208,14 +208,9 @@ def track_description(
             if old_state.name == 'In Progress':
                 issue = Issue.objects.get(pk=issue_id, project_id = project_id)
                 obj = IssueActivity.objects.filter(issue_id = issue_id, project_id = project_id, field = 'state').order_by('epoch').last()
-                # obj = IssueActivity.objects.filter(issue_id = issue_id, new_value='In Progress').order_by('epoch').last()
                 if obj is not None and obj.new_value == 'In Progress':
-                    print("Old Issue Activity: {}".format(obj.id))
                     issue.time_consumed = issue.time_consumed + int(((epoch - obj.epoch) / 60))
                     issue.save()
-                    print("If succeeded")
-            else:
-                print("If failed")
         except Exception as e:
             print("Exception {} occured in consumed hours for issue : {}.".format(str(e), issue_id))
 
