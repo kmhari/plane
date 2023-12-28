@@ -208,8 +208,12 @@ def track_description(
             if old_state.name == 'In Progress':
                 issue = Issue.objects.get(pk=issue_id)
                 obj = IssueActivity.objects.filter(issue_id = issue_id, new_value='In Progress').last()
+                print("Old Issue Activity: {}".format(obj.id))
                 issue.time_consumed = issue.time_consumed + int(((epoch - obj.epoch) / 60))
                 issue.save()
+                print("If succeeded")
+            else:
+                print("If failed")
         except Exception as e:
             print("Exception {} occured in consumed hours for issue : {}.".format(str(e), issue_id))
 
