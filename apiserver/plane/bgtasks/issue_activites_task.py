@@ -207,7 +207,7 @@ def track_description(
         try:
             if old_state.name == 'In Progress':
                 issue = Issue.objects.get(pk=issue_id)
-                obj = IssueActivity.objects.filter(issue_id = issue_id, new_value='In Progress').last()
+                obj = IssueActivity.objects.filter(issue_id = issue_id, new_value='In Progress').order_by('epoch').last()
                 print("Old Issue Activity: {}".format(obj.id))
                 issue.time_consumed = issue.time_consumed + int(((epoch - obj.epoch) / 60))
                 issue.save()
