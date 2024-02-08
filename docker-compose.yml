@@ -104,6 +104,22 @@ services:
       POSTGRES_PASSWORD: ${PGPASSWORD}
       PGDATA: /var/lib/postgresql/data
 
+  proxy:
+    container_name: proxy
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - 81:80
+    environment:
+      FILE_SIZE_LIMIT: ${FILE_SIZE_LIMIT:-5242880}
+      BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-uploads}
+    depends_on:
+      - web
+      - api
+      - space
+
 volumes:
   pgdata:
   redisdata:
