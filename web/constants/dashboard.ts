@@ -238,14 +238,14 @@ export const SIDEBAR_MENU_ITEMS: {
     highlight: (pathname: string, baseUrl: string) => pathname === `${baseUrl}/projects`,
     Icon: Briefcase,
   },
-  {
-    key: "all-issues",
-    label: "All Issues",
-    href: `/workspace-views/all-issues`,
-    access: EUserWorkspaceRoles.GUEST,
-    highlight: (pathname: string, baseUrl: string) => pathname.includes(`${baseUrl}/workspace-views`),
-    Icon: CheckCircle,
-  },
+  // {
+  //   key: "all-issues",
+  //   label: "All Issues",
+  //   href: `/workspace-views/all-issues`,
+  //   access: EUserWorkspaceRoles.GUEST,
+  //   highlight: (pathname: string, baseUrl: string) => pathname.includes(`${baseUrl}/workspace-views`),
+  //   Icon: CheckCircle,
+  // },
   {
     key: "active-cycles",
     label: "Active Cycles",
