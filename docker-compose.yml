@@ -43,6 +43,8 @@ services:
     command: ./bin/takeoff
     ports:
       - 8000:8000
+    volumes:
+      - .:/app
     env_file:
       - ./apiserver/.env
     depends_on:
@@ -60,6 +62,8 @@ services:
     command: ./bin/worker
     env_file:
       - ./apiserver/.env
+    volumes:
+      - .:/app
     depends_on:
       - api
       - plane-db
@@ -74,6 +78,8 @@ services:
         DOCKER_BUILDKIT: 1
     restart: always
     command: ./bin/beat
+    volumes:
+      - .:/app
     env_file:
       - ./apiserver/.env
     depends_on:
