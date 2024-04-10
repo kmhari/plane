@@ -43,14 +43,14 @@ INSTALLED_APPS = [
     "plane.middleware",
     "plane.license",
     "plane.api",
+    "plane.f22",
     # Third-party things
     "rest_framework",
     "rest_framework.authtoken",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "django_celery_beat",
-    "storages",
-    "f22"
+    "storages"
 ]
 
 # Middlewares
