@@ -10,6 +10,6 @@ class IssueProgressHistory(models.Model):
         Issue, related_name="issue_progress_history", on_delete=models.CASCADE
     )
 
-    started_at = models.DateTimeField()
-    ended_at = models.DateTimeField()
+    started_at = models.FloatField(null=True)
+    ended_at = models.FloatField(null=True)
     duration = models.SmallIntegerField()
