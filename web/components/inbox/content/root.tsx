@@ -1,86 +1,84 @@
-import { FC } from "react";
+import { FC, useEffect, useState } from "react";
 import { observer } from "mobx-react";
-import { Inbox } from "lucide-react";
-// hooks
-import { useInboxIssues } from "hooks/store";
-// components
-import { InboxIssueActionsHeader } from "components/inbox";
-import { InboxIssueDetailRoot } from "components/issues/issue-detail/inbox";
-// ui
-import { Loader } from "@plane/ui";
+import { useRouter } from "next/router";
+import useSWR from "swr";
+import { InboxIssueActionsHeader, InboxIssueMainContent } from "@/components/inbox";
+import { EUserProjectRoles } from "@/constants/project";
+import { useProjectInbox, useUser } from "@/hooks/store";
 
 type TInboxContentRoot = {
   workspaceSlug: string;
   projectId: string;
-  inboxId: string;
-  inboxIssueId: string | undefined;
+  inboxIssueId: string;
+  isMobileSidebar: boolean;
+  setIsMobileSidebar: (value: boolean) => void;
 };
 
 export const InboxContentRoot: FC<TInboxContentRoot> = observer((props) => {
-  const { workspaceSlug, projectId, inboxId, inboxIssueId } = props;
+  const { workspaceSlug, projectId, inboxIssueId, isMobileSidebar, setIsMobileSidebar } = props;
+  /// router
+  const router = useRouter();
+  // states
+  const [isSubmitting, setIsSubmitting] = useState<"submitting" | "submitted" | "saved">("saved");
   // hooks
+  const { currentTab, fetchInboxIssueById, getIssueInboxByIssueId, getIsIssueAvailable } = useProjectInbox();
+  const inboxIssue = getIssueInboxByIssueId(inboxIssueId);
   const {
-    issues: { loader, getInboxIssuesByInboxId },
-  } = useInboxIssues();
+    membership: { currentProjectRole },
+  } = useUser();
+  // derived values
+  const isIssueAvailable = getIsIssueAvailable(inboxIssueId?.toString() || "");
 
-  const inboxIssuesList = inboxId ? getInboxIssuesByInboxId(inboxId) : undefined;
+  useEffect(() => {
+    if (!isIssueAvailable && inboxIssueId) {
+      router.replace(`/${workspaceSlug}/projects/${projectId}/inbox?currentTab=${currentTab}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isIssueAvailable]);
+
+  useSWR(
+    workspaceSlug && projectId && inboxIssueId
+      ? `PROJECT_INBOX_ISSUE_DETAIL_${workspaceSlug}_${projectId}_${inboxIssueId}`
+      : null,
+    workspaceSlug && projectId && inboxIssueId
+      ? () => fetchInboxIssueById(workspaceSlug, projectId, inboxIssueId)
+      : null,
+    {
+      revalidateOnFocus: false,
+      revalidateIfStale: false,
+    }
+  );
+
+  const isEditable = !!currentProjectRole && currentProjectRole >= EUserProjectRoles.MEMBER;
+
+  if (!inboxIssue) return <></>;
+
+  const isIssueDisabled = [-1, 1, 2].includes(inboxIssue.status);
 
   return (
     <>
-      {loader === "init-loader" ? (
-        <Loader className="flex h-full gap-5 p-5">
-          <div className="basis-2/3 space-y-2">
-            <Loader.Item height="30px" width="40%" />
-            <Loader.Item height="15px" width="60%" />
-            <Loader.Item height="15px" width="60%" />
-            <Loader.Item height="15px" width="40%" />
-          </div>
-          <div className="basis-1/3 space-y-3">
-            <Loader.Item height="30px" />
-            <Loader.Item height="30px" />
-            <Loader.Item height="30px" />
-            <Loader.Item height="30px" />
-          </div>
-        </Loader>
-      ) : (
-        <>
-          {!inboxIssueId ? (
-            <div className="grid h-full place-items-center p-4 text-custom-text-200">
-              <div className="grid h-full place-items-center">
-                <div className="my-5 flex flex-col items-center gap-4">
-                  <Inbox size={60} strokeWidth={1.5} />
-                  {inboxIssuesList && inboxIssuesList.length > 0 ? (
-                    <span className="text-custom-text-200">
-                      {inboxIssuesList?.length} issues found. Select an issue from the sidebar to view its details.
-                    </span>
-                  ) : (
-                    <span className="text-custom-text-200">No issues found</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="w-full h-full overflow-hidden relative flex flex-col">
-              <div className="flex-shrink-0 min-h-[50px] border-b border-custom-border-300">
-                <InboxIssueActionsHeader
-                  workspaceSlug={workspaceSlug}
-                  projectId={projectId}
-                  inboxId={inboxId}
-                  inboxIssueId={inboxIssueId}
-                />
-              </div>
-              <div className="w-full h-full">
-                <InboxIssueDetailRoot
-                  workspaceSlug={workspaceSlug}
-                  projectId={projectId}
-                  inboxId={inboxId}
-                  issueId={inboxIssueId}
-                />
-              </div>
-            </div>
-          )}
-        </>
-      )}
+      <div className="w-full h-full overflow-hidden relative flex flex-col">
+        <div className="flex-shrink-0 min-h-[50px] border-b border-custom-border-300">
+          <InboxIssueActionsHeader
+            setIsMobileSidebar={setIsMobileSidebar}
+            isMobileSidebar={isMobileSidebar}
+            workspaceSlug={workspaceSlug}
+            projectId={projectId}
+            inboxIssue={inboxIssue}
+            isSubmitting={isSubmitting}
+          />
+        </div>
+        <div className="h-full w-full space-y-5 divide-y-2 divide-custom-border-200 overflow-y-auto px-6 py-5 vertical-scrollbar scrollbar-md">
+          <InboxIssueMainContent
+            workspaceSlug={workspaceSlug}
+            projectId={projectId}
+            inboxIssue={inboxIssue}
+            isEditable={isEditable && !isIssueDisabled}
+            isSubmitting={isSubmitting}
+            setIsSubmitting={setIsSubmitting}
+          />
+        </div>
+      </div>
     </>
   );
 });

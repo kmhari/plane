@@ -1,19 +1,19 @@
 import { linearGradientDef } from "@nivo/core";
 // assets
-import UpcomingIssuesDark from "public/empty-state/dashboard/dark/upcoming-issues.svg";
-import UpcomingIssuesLight from "public/empty-state/dashboard/light/upcoming-issues.svg";
-import OverdueIssuesDark from "public/empty-state/dashboard/dark/overdue-issues.svg";
-import OverdueIssuesLight from "public/empty-state/dashboard/light/overdue-issues.svg";
+import { BarChart2, Briefcase, CheckCircle, Home } from "lucide-react";
+import { ContrastIcon } from "@plane/ui";
+import { Props } from "@/components/icons/types";
 import CompletedIssuesDark from "public/empty-state/dashboard/dark/completed-issues.svg";
+import OverdueIssuesDark from "public/empty-state/dashboard/dark/overdue-issues.svg";
+import UpcomingIssuesDark from "public/empty-state/dashboard/dark/upcoming-issues.svg";
 import CompletedIssuesLight from "public/empty-state/dashboard/light/completed-issues.svg";
+import OverdueIssuesLight from "public/empty-state/dashboard/light/overdue-issues.svg";
+import UpcomingIssuesLight from "public/empty-state/dashboard/light/upcoming-issues.svg";
 // types
-import { TDurationFilterOptions, TIssuesListTypes, TStateGroups } from "@plane/types";
-import { Props } from "components/icons/types";
+import { TIssuesListTypes, TStateGroups } from "@plane/types";
 // constants
 import { EUserWorkspaceRoles } from "./workspace";
 // icons
-import { BarChart2, Briefcase, CheckCircle, LayoutGrid } from "lucide-react";
-import { ContrastIcon } from "@plane/ui";
 
 // gradients for issues by priority widget graph bars
 export const PRIORITY_GRAPH_GRADIENTS = [
@@ -116,26 +116,43 @@ export const STATE_GROUP_GRAPH_COLORS: Record<TStateGroups, string> = {
   cancelled: "#E5484D",
 };
 
+export enum EDurationFilters {
+  NONE = "none",
+  TODAY = "today",
+  THIS_WEEK = "this_week",
+  THIS_MONTH = "this_month",
+  THIS_YEAR = "this_year",
+  CUSTOM = "custom",
+}
+
 // filter duration options
 export const DURATION_FILTER_OPTIONS: {
-  key: TDurationFilterOptions;
+  key: EDurationFilters;
   label: string;
 }[] = [
   {
-    key: "today",
-    label: "Today",
+    key: EDurationFilters.NONE,
+    label: "All time",
   },
   {
-    key: "this_week",
-    label: "This week",
+    key: EDurationFilters.TODAY,
+    label: "Due today",
   },
   {
-    key: "this_month",
-    label: "This month",
+    key: EDurationFilters.THIS_WEEK,
+    label: "Due this week",
   },
   {
-    key: "this_year",
-    label: "This year",
+    key: EDurationFilters.THIS_MONTH,
+    label: "Due this month",
+  },
+  {
+    key: EDurationFilters.THIS_YEAR,
+    label: "Due this year",
+  },
+  {
+    key: EDurationFilters.CUSTOM,
+    label: "Custom",
   },
 ];
 
@@ -152,7 +169,7 @@ export const PROJECT_BACKGROUND_COLORS = [
 ];
 
 // assigned and created issues widgets tabs list
-export const ISSUES_TABS_LIST: {
+export const FILTERED_ISSUES_TABS_LIST: {
   key: TIssuesListTypes;
   label: string;
 }[] = [
@@ -170,7 +187,27 @@ export const ISSUES_TABS_LIST: {
   },
 ];
 
+// assigned and created issues widgets tabs list
+export const UNFILTERED_ISSUES_TABS_LIST: {
+  key: TIssuesListTypes;
+  label: string;
+}[] = [
+  {
+    key: "pending",
+    label: "Pending",
+  },
+  {
+    key: "completed",
+    label: "Marked completed",
+  },
+];
+
 export const ASSIGNED_ISSUES_EMPTY_STATES = {
+  pending: {
+    title: "Issues assigned to you that are pending\nwill show up here.",
+    darkImage: UpcomingIssuesDark,
+    lightImage: UpcomingIssuesLight,
+  },
   upcoming: {
     title: "Upcoming issues assigned to\nyou will show up here.",
     darkImage: UpcomingIssuesDark,
@@ -189,6 +226,11 @@ export const ASSIGNED_ISSUES_EMPTY_STATES = {
 };
 
 export const CREATED_ISSUES_EMPTY_STATES = {
+  pending: {
+    title: "Issues created by you that are pending\nwill show up here.",
+    darkImage: UpcomingIssuesDark,
+    lightImage: UpcomingIssuesLight,
+  },
   upcoming: {
     title: "Upcoming issues you created\nwill show up here.",
     darkImage: UpcomingIssuesDark,
@@ -215,19 +257,19 @@ export const SIDEBAR_MENU_ITEMS: {
   Icon: React.FC<Props>;
 }[] = [
   {
-    key: "dashboard",
-    label: "Dashboard",
+    key: "home",
+    label: "Home",
     href: ``,
     access: EUserWorkspaceRoles.GUEST,
     highlight: (pathname: string, baseUrl: string) => pathname === `${baseUrl}`,
-    Icon: LayoutGrid,
+    Icon: Home,
   },
   {
     key: "analytics",
     label: "Analytics",
     href: `/analytics`,
     access: EUserWorkspaceRoles.MEMBER,
-    highlight: (pathname: string, baseUrl: string) => pathname === `${baseUrl}/analytics`,
+    highlight: (pathname: string, baseUrl: string) => pathname.includes(`${baseUrl}/analytics`),
     Icon: BarChart2,
   },
   {

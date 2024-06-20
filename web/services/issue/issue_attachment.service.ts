@@ -1,8 +1,8 @@
-import { APIService } from "services/api.service";
-// helper
-import { API_BASE_URL } from "helpers/common.helper";
-// types
 import { TIssueAttachment } from "@plane/types";
+// helpers
+import { API_BASE_URL } from "@/helpers/common.helper";
+// services
+import { APIService } from "@/services/api.service";
 
 export class IssueAttachmentService extends APIService {
   constructor() {
@@ -20,7 +20,6 @@ export class IssueAttachmentService extends APIService {
       file,
       {
         headers: {
-          ...this.getHeaders(),
           "Content-Type": "multipart/form-data",
         },
       }

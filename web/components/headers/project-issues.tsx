@@ -1,24 +1,34 @@
 import { useCallback, useState } from "react";
-import Link from "next/link";
+import { observer } from "mobx-react";
 import { useRouter } from "next/router";
-import { observer } from "mobx-react-lite";
-import { ArrowLeft, Briefcase, Circle, ExternalLink, Plus } from "lucide-react";
-// hooks
-import { useApplication, useLabel, useProject, useProjectState, useUser, useInbox, useMember } from "hooks/store";
-// components
-import { DisplayFiltersSelection, FiltersDropdown, FilterSelection, LayoutSelection } from "components/issues";
-import { ProjectAnalyticsModal } from "components/analytics";
-import { SidebarHamburgerToggle } from "components/core/sidebar/sidebar-menu-hamburger-toggle";
-// ui
-import { Breadcrumbs, Button, LayersIcon } from "@plane/ui";
+// icons
+import { Briefcase, Circle, ExternalLink } from "lucide-react";
 // types
 import { IIssueDisplayFilterOptions, IIssueDisplayProperties, IIssueFilterOptions, TIssueLayouts } from "@plane/types";
+// ui
+import { Breadcrumbs, Button, LayersIcon, Tooltip } from "@plane/ui";
+// components
+import { ProjectAnalyticsModal } from "@/components/analytics";
+import { BreadcrumbLink, Logo } from "@/components/common";
+import { DisplayFiltersSelection, FiltersDropdown, FilterSelection, LayoutSelection } from "@/components/issues";
 // constants
-import { EIssueFilterType, EIssuesStoreType, ISSUE_DISPLAY_FILTERS_BY_LAYOUT } from "constants/issue";
-// helper
-import { renderEmoji } from "helpers/emoji.helper";
-import { EUserProjectRoles } from "constants/project";
-import { useIssues } from "hooks/store/use-issues";
+import { EIssueFilterType, EIssuesStoreType, ISSUE_DISPLAY_FILTERS_BY_LAYOUT } from "@/constants/issue";
+import { EUserProjectRoles } from "@/constants/project";
+// helpers
+import { SPACE_BASE_PATH, SPACE_BASE_URL } from "@/helpers/common.helper";
+import { calculateTotalFilters } from "@/helpers/filter.helper";
+// hooks
+import {
+  useEventTracker,
+  useLabel,
+  useProject,
+  useProjectState,
+  useUser,
+  useMember,
+  useCommandPalette,
+} from "@/hooks/store";
+import { useIssues } from "@/hooks/store/use-issues";
+import { usePlatformOS } from "@/hooks/use-platform-os";
 
 export const ProjectIssuesHeader: React.FC = observer(() => {
   // states
@@ -32,19 +42,17 @@ export const ProjectIssuesHeader: React.FC = observer(() => {
   } = useMember();
   const {
     issuesFilter: { issueFilters, updateFilters },
+    issues: { issuesCount },
   } = useIssues(EIssuesStoreType.PROJECT);
-  const {
-    commandPalette: { toggleCreateIssueModal },
-    eventTracker: { setTrackElement },
-  } = useApplication();
+  const { toggleCreateIssueModal } = useCommandPalette();
+  const { setTrackElement } = useEventTracker();
   const {
     membership: { currentProjectRole },
   } = useUser();
   const { currentProjectDetails } = useProject();
   const { projectStates } = useProjectState();
   const { projectLabels } = useLabel();
-  const { getInboxesByProjectId, getInboxById } = useInbox();
-
+  const { isMobile } = usePlatformOS();
   const activeLayout = issueFilters?.displayFilters?.layout;
 
   const handleFiltersUpdate = useCallback(
@@ -53,8 +61,10 @@ export const ProjectIssuesHeader: React.FC = observer(() => {
       const newValues = issueFilters?.filters?.[key] ?? [];
 
       if (Array.isArray(value)) {
+        // this validation is majorly for the filter start_date, target_date custom
         value.forEach((val) => {
           if (!newValues.includes(val)) newValues.push(val);
+          else newValues.splice(newValues.indexOf(val), 1);
         });
       } else {
         if (issueFilters?.filters?.[key]?.includes(value)) newValues.splice(newValues.indexOf(value), 1);
@@ -90,12 +100,12 @@ export const ProjectIssuesHeader: React.FC = observer(() => {
     [workspaceSlug, projectId, updateFilters]
   );
 
-  const inboxesMap = currentProjectDetails?.inbox_view ? getInboxesByProjectId(currentProjectDetails.id) : undefined;
-  const inboxDetails = inboxesMap && inboxesMap.length > 0 ? getInboxById(inboxesMap[0]) : undefined;
+  const DEPLOY_URL = SPACE_BASE_URL + SPACE_BASE_PATH;
 
-  const deployUrl = process.env.NEXT_PUBLIC_DEPLOY_URL;
   const canUserCreateIssue =
     currentProjectRole && [EUserProjectRoles.ADMIN, EUserProjectRoles.MEMBER].includes(currentProjectRole);
+
+  const isFiltersApplied = calculateTotalFilters(issueFilters?.filters ?? {}) !== 0;
 
   return (
     <>
@@ -104,57 +114,54 @@ export const ProjectIssuesHeader: React.FC = observer(() => {
         onClose={() => setAnalyticsModal(false)}
         projectDetails={currentProjectDetails ?? undefined}
       />
-      <div className="relative z-10 flex h-[3.75rem] w-full flex-shrink-0 flex-row items-center justify-between gap-x-2 gap-y-4 border-b border-custom-border-200 bg-custom-sidebar-background-100 p-4">
+
+      <div className="relative z-[15] flex h-[3.75rem] w-full flex-shrink-0 flex-row items-center justify-between gap-x-2 gap-y-4 bg-custom-sidebar-background-100 p-4">
         <div className="flex w-full flex-grow items-center gap-2 overflow-ellipsis whitespace-nowrap">
-          <SidebarHamburgerToggle/>
-          <div className="block md:hidden">
-            <button
-              type="button"
-              className="grid h-8 w-8 place-items-center rounded border border-custom-border-200"
-              onClick={() => router.back()}
-            >
-              <ArrowLeft fontSize={14} strokeWidth={2} />
-            </button>
-          </div>
-          <div>
-            <Breadcrumbs>
+          <div className="flex items-center gap-2.5">
+            <Breadcrumbs onBack={() => router.back()}>
               <Breadcrumbs.BreadcrumbItem
                 type="text"
-                icon={
-                  currentProjectDetails ? (
-                    currentProjectDetails?.emoji ? (
-                      <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded uppercase">
-                        {renderEmoji(currentProjectDetails.emoji)}
-                      </span>
-                    ) : currentProjectDetails?.icon_prop ? (
-                      <div className="grid h-7 w-7 flex-shrink-0 place-items-center">
-                        {renderEmoji(currentProjectDetails.icon_prop)}
-                      </div>
-                    ) : (
-                      <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded bg-gray-700 uppercase text-white">
-                        {currentProjectDetails?.name.charAt(0)}
-                      </span>
-                    )
-                  ) : (
-                    <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded uppercase">
-                      <Briefcase className="h-4 w-4" />
-                    </span>
-                  )
+                link={
+                  <BreadcrumbLink
+                    href={`/${workspaceSlug}/projects`}
+                    label={currentProjectDetails?.name ?? "Project"}
+                    icon={
+                      currentProjectDetails ? (
+                        currentProjectDetails && (
+                          <span className="grid place-items-center flex-shrink-0 h-4 w-4">
+                            <Logo logo={currentProjectDetails?.logo_props} size={16} />
+                          </span>
+                        )
+                      ) : (
+                        <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded uppercase">
+                          <Briefcase className="h-4 w-4" />
+                        </span>
+                      )
+                    }
+                  />
                 }
-                label={currentProjectDetails?.name ?? "Project"}
-                link={`/${workspaceSlug}/projects`}
               />
 
               <Breadcrumbs.BreadcrumbItem
                 type="text"
-                icon={<LayersIcon className="h-4 w-4 text-custom-text-300" />}
-                label="Issues"
+                link={<BreadcrumbLink label="Issues" icon={<LayersIcon className="h-4 w-4 text-custom-text-300" />} />}
               />
             </Breadcrumbs>
+            {issuesCount && issuesCount > 0 ? (
+              <Tooltip
+                isMobile={isMobile}
+                tooltipContent={`There are ${issuesCount} ${issuesCount > 1 ? "issues" : "issue"} in this project`}
+                position="bottom"
+              >
+                <span className="cursor-default flex items-center text-center justify-center px-2.5 py-0.5 flex-shrink-0 bg-custom-primary-100/20 text-custom-primary-100 text-xs font-semibold rounded-xl">
+                  {issuesCount}
+                </span>
+              </Tooltip>
+            ) : null}
           </div>
-          {currentProjectDetails?.is_deployed && deployUrl && (
+          {currentProjectDetails?.is_deployed && DEPLOY_URL && (
             <a
-              href={`${deployUrl}/${workspaceSlug}/${currentProjectDetails?.id}`}
+              href={`${DEPLOY_URL}/${workspaceSlug}/${currentProjectDetails?.id}`}
               className="group flex items-center gap-1.5 rounded bg-custom-primary-100/10 px-2.5 py-1 text-xs font-medium text-custom-primary-100"
               target="_blank"
               rel="noopener noreferrer"
@@ -165,13 +172,13 @@ export const ProjectIssuesHeader: React.FC = observer(() => {
             </a>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="items-center gap-2 hidden md:flex">
           <LayoutSelection
             layouts={["list", "kanban", "calendar", "spreadsheet", "gantt_chart"]}
             onChange={(layout) => handleLayoutChange(layout)}
             selectedLayout={activeLayout}
           />
-          <FiltersDropdown title="Filters" placement="bottom-end">
+          <FiltersDropdown title="Filters" placement="bottom-end" isFiltersApplied={isFiltersApplied}>
             <FilterSelection
               filters={issueFilters?.filters ?? {}}
               handleFiltersUpdate={handleFiltersUpdate}
@@ -181,6 +188,8 @@ export const ProjectIssuesHeader: React.FC = observer(() => {
               labels={projectLabels}
               memberIds={projectMemberIds ?? undefined}
               states={projectStates}
+              cycleViewDisabled={!currentProjectDetails?.cycle_view}
+              moduleViewDisabled={!currentProjectDetails?.module_view}
             />
           </FiltersDropdown>
           <FiltersDropdown title="Display" placement="bottom-end">
@@ -192,42 +201,33 @@ export const ProjectIssuesHeader: React.FC = observer(() => {
               handleDisplayFiltersUpdate={handleDisplayFilters}
               displayProperties={issueFilters?.displayProperties ?? {}}
               handleDisplayPropertiesUpdate={handleDisplayProperties}
+              cycleViewDisabled={!currentProjectDetails?.cycle_view}
+              moduleViewDisabled={!currentProjectDetails?.module_view}
             />
           </FiltersDropdown>
-
-          {currentProjectDetails?.inbox_view && inboxDetails && (
-            <Link href={`/${workspaceSlug}/projects/${projectId}/inbox/${inboxDetails?.id}`}>
-              <span>
-                <Button variant="neutral-primary" size="sm" className="relative">
-                  Inbox
-                  {inboxDetails?.pending_issue_count > 0 && (
-                    <span className="absolute -right-1.5 -top-1.5 h-4 w-4 rounded-full border border-custom-sidebar-border-200 bg-custom-sidebar-background-80 text-custom-text-100">
-                      {inboxDetails?.pending_issue_count}
-                    </span>
-                  )}
-                </Button>
-              </span>
-            </Link>
-          )}
-
-          {canUserCreateIssue && (
-            <>
-              <Button onClick={() => setAnalyticsModal(true)} variant="neutral-primary" size="sm">
-                Analytics
-              </Button>
-              <Button
-                onClick={() => {
-                  setTrackElement("PROJECT_PAGE_HEADER");
-                  toggleCreateIssueModal(true, EIssuesStoreType.PROJECT);
-                }}
-                size="sm"
-                prependIcon={<Plus />}
-              >
-                Add Issue
-              </Button>
-            </>
-          )}
         </div>
+
+        {canUserCreateIssue && (
+          <>
+            <Button
+              className="hidden md:block"
+              onClick={() => setAnalyticsModal(true)}
+              variant="neutral-primary"
+              size="sm"
+            >
+              Analytics
+            </Button>
+            <Button
+              onClick={() => {
+                setTrackElement("Project issues page");
+                toggleCreateIssueModal(true, EIssuesStoreType.PROJECT);
+              }}
+              size="sm"
+            >
+              <div className="hidden sm:block">Add</div> Issue
+            </Button>
+          </>
+        )}
       </div>
     </>
   );

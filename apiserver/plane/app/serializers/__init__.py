@@ -7,6 +7,8 @@ from .user import (
     UserAdminLiteSerializer,
     UserMeSerializer,
     UserMeSettingsSerializer,
+    ProfileSerializer,
+    AccountSerializer,
 )
 from .workspace import (
     WorkSpaceSerializer,
@@ -26,7 +28,6 @@ from .project import (
     ProjectMemberSerializer,
     ProjectMemberInviteSerializer,
     ProjectIdentifierSerializer,
-    ProjectFavoriteSerializer,
     ProjectLiteSerializer,
     ProjectMemberLiteSerializer,
     ProjectDeployBoardSerializer,
@@ -38,12 +39,10 @@ from .state import StateSerializer, StateLiteSerializer
 from .view import (
     GlobalViewSerializer,
     IssueViewSerializer,
-    IssueViewFavoriteSerializer,
 )
 from .cycle import (
     CycleSerializer,
     CycleIssueSerializer,
-    CycleFavoriteSerializer,
     CycleWriteSerializer,
     CycleUserPropertiesSerializer,
 )
@@ -59,6 +58,7 @@ from .issue import (
     IssueFlatSerializer,
     IssueStateSerializer,
     IssueLinkSerializer,
+    IssueInboxSerializer,
     IssueLiteSerializer,
     IssueAttachmentSerializer,
     IssueSubscriberSerializer,
@@ -68,28 +68,22 @@ from .issue import (
     IssueRelationSerializer,
     RelatedIssueSerializer,
     IssuePublicSerializer,
+    IssueDetailSerializer,
+    IssueReactionLiteSerializer,
+    IssueAttachmentLiteSerializer,
+    IssueLinkLiteSerializer,
 )
 
 from .module import (
+    ModuleDetailSerializer,
     ModuleWriteSerializer,
     ModuleSerializer,
     ModuleIssueSerializer,
     ModuleLinkSerializer,
-    ModuleFavoriteSerializer,
     ModuleUserPropertiesSerializer,
 )
 
 from .api import APITokenSerializer, APITokenReadSerializer
-
-from .integration import (
-    IntegrationSerializer,
-    WorkspaceIntegrationSerializer,
-    GithubIssueSyncSerializer,
-    GithubRepositorySerializer,
-    GithubRepositorySyncSerializer,
-    GithubCommentSyncSerializer,
-    SlackProjectSyncSerializer,
-)
 
 from .importer import ImporterSerializer
 
@@ -97,7 +91,7 @@ from .page import (
     PageSerializer,
     PageLogSerializer,
     SubPageSerializer,
-    PageFavoriteSerializer,
+    PageDetailSerializer,
 )
 
 from .estimate import (
@@ -112,11 +106,15 @@ from .inbox import (
     InboxIssueSerializer,
     IssueStateInboxSerializer,
     InboxIssueLiteSerializer,
+    InboxIssueDetailSerializer,
 )
 
 from .analytic import AnalyticViewSerializer
 
-from .notification import NotificationSerializer, UserNotificationPreferenceSerializer
+from .notification import (
+    NotificationSerializer,
+    UserNotificationPreferenceSerializer,
+)
 
 from .exporter import ExporterHistorySerializer
 

@@ -1,7 +1,13 @@
 import { Editor, Range } from "@tiptap/core";
-import { startImageUpload } from "src/ui/plugins/upload-image";
+import { startImageUpload } from "src/ui/plugins/image/image-upload-handler";
 import { findTableAncestor } from "src/lib/utils";
+import { Selection } from "@tiptap/pm/state";
 import { UploadImage } from "src/types/upload-image";
+
+export const setText = (editor: Editor, range?: Range) => {
+  if (range) editor.chain().focus().deleteRange(range).clearNodes().run();
+  else editor.chain().focus().clearNodes().run();
+};
 
 export const toggleHeadingOne = (editor: Editor, range?: Range) => {
   if (range) editor.chain().focus().deleteRange(range).setNode("heading", { level: 1 }).run();
@@ -16,6 +22,21 @@ export const toggleHeadingTwo = (editor: Editor, range?: Range) => {
 export const toggleHeadingThree = (editor: Editor, range?: Range) => {
   if (range) editor.chain().focus().deleteRange(range).setNode("heading", { level: 3 }).run();
   else editor.chain().focus().toggleHeading({ level: 3 }).run();
+};
+
+export const toggleHeadingFour = (editor: Editor, range?: Range) => {
+  if (range) editor.chain().focus().deleteRange(range).setNode("heading", { level: 4 }).run();
+  else editor.chain().focus().toggleHeading({ level: 4 }).run();
+};
+
+export const toggleHeadingFive = (editor: Editor, range?: Range) => {
+  if (range) editor.chain().focus().deleteRange(range).setNode("heading", { level: 5 }).run();
+  else editor.chain().focus().toggleHeading({ level: 5 }).run();
+};
+
+export const toggleHeadingSix = (editor: Editor, range?: Range) => {
+  if (range) editor.chain().focus().deleteRange(range).setNode("heading", { level: 6 }).run();
+  else editor.chain().focus().toggleHeading({ level: 6 }).run();
 };
 
 export const toggleBold = (editor: Editor, range?: Range) => {
@@ -33,32 +54,85 @@ export const toggleUnderline = (editor: Editor, range?: Range) => {
   else editor.chain().focus().toggleUnderline().run();
 };
 
-export const toggleCodeBlock = (editor: Editor, range?: Range) => {
-  // Check if code block is active then toggle code block
-  if (editor.isActive("codeBlock")) {
-    if (range) {
-      editor.chain().focus().deleteRange(range).toggleCodeBlock().run();
-      return;
+const replaceCodeBlockWithContent = (editor: Editor) => {
+  try {
+    const { schema } = editor.state;
+    const { paragraph } = schema.nodes;
+    let replaced = false;
+
+    const replaceCodeBlock = (from: number, to: number, textContent: string) => {
+      const docSize = editor.state.doc.content.size;
+
+      if (from < 0 || to > docSize || from > to) {
+        console.error("Invalid range for replacement: ", from, to, "in a document of size", docSize);
+        return;
+      }
+
+      // split the textContent by new lines to handle each line as a separate paragraph
+      const lines = textContent.split(/\r?\n/);
+
+      const tr = editor.state.tr;
+
+      // Calculate the position for inserting the first paragraph
+      let insertPos = from;
+
+      // Remove the code block first
+      tr.delete(from, to);
+
+      // For each line, create a paragraph node and insert it
+      lines.forEach((line) => {
+        const paragraphNode = paragraph.create({}, schema.text(line));
+        tr.insert(insertPos, paragraphNode);
+        // Update insertPos for the next insertion
+        insertPos += paragraphNode.nodeSize;
+      });
+
+      // Dispatch the transaction
+      editor.view.dispatch(tr);
+      replaced = true;
+    };
+
+    editor.state.doc.nodesBetween(editor.state.selection.from, editor.state.selection.to, (node, pos) => {
+      if (node.type === schema.nodes.codeBlock) {
+        const startPos = pos;
+        const endPos = pos + node.nodeSize;
+        const textContent = node.textContent;
+        if (textContent.length === 0) {
+          editor.chain().focus().toggleCodeBlock().run();
+        }
+        replaceCodeBlock(startPos, endPos, textContent);
+        return false;
+      }
+    });
+
+    if (!replaced) {
+      console.log("No code block to replace.");
     }
-    editor.chain().focus().toggleCodeBlock().run();
-    return;
+  } catch (error) {
+    console.error("An error occurred while replacing code block content:", error);
   }
+};
 
-  // Check if user hasn't selected any text
-  const isSelectionEmpty = editor.state.selection.empty;
-
-  if (isSelectionEmpty) {
-    if (range) {
-      editor.chain().focus().deleteRange(range).toggleCodeBlock().run();
+export const toggleCodeBlock = (editor: Editor, range?: Range) => {
+  try {
+    if (editor.isActive("codeBlock")) {
+      replaceCodeBlockWithContent(editor);
       return;
     }
-    editor.chain().focus().toggleCodeBlock().run();
-  } else {
-    if (range) {
-      editor.chain().focus().deleteRange(range).toggleCode().run();
-      return;
+
+    const { from, to } = range || editor.state.selection;
+    const text = editor.state.doc.textBetween(from, to, "\n");
+    const isMultiline = text.includes("\n");
+
+    if (editor.state.selection.empty) {
+      editor.chain().focus().toggleCodeBlock().run();
+    } else if (isMultiline) {
+      editor.chain().focus().deleteRange({ from, to }).insertContentAt(from, `\`\`\`\n${text}\n\`\`\``).run();
+    } else {
+      editor.chain().focus().toggleCode().run();
     }
-    editor.chain().focus().toggleCode().run();
+  } catch (error) {
+    console.error("An error occurred while toggling code block:", error);
   }
 };
 
@@ -89,16 +163,18 @@ export const toggleBlockquote = (editor: Editor, range?: Range) => {
 
 export const insertTableCommand = (editor: Editor, range?: Range) => {
   if (typeof window !== "undefined") {
-    const selection: any = window?.getSelection();
-    if (selection.rangeCount !== 0) {
-      const range = selection.getRangeAt(0);
-      if (findTableAncestor(range.startContainer)) {
-        return;
+    const selection = window.getSelection();
+    if (selection) {
+      if (selection.rangeCount !== 0) {
+        const range = selection.getRangeAt(0);
+        if (findTableAncestor(range.startContainer)) {
+          return;
+        }
       }
     }
   }
-  if (range) editor.chain().focus().deleteRange(range).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
-  else editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+  if (range) editor.chain().focus().deleteRange(range).clearNodes().insertTable({ rows: 3, cols: 3 }).run();
+  else editor.chain().focus().clearNodes().insertTable({ rows: 3, cols: 3 }).run();
 };
 
 export const unsetLinkEditor = (editor: Editor) => {
@@ -112,18 +188,18 @@ export const setLinkEditor = (editor: Editor, url: string) => {
 export const insertImageCommand = (
   editor: Editor,
   uploadFile: UploadImage,
-  setIsSubmitting?: (isSubmitting: "submitting" | "submitted" | "saved") => void,
+  savedSelection?: Selection | null,
   range?: Range
 ) => {
   if (range) editor.chain().focus().deleteRange(range).run();
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = "image/*";
+  input.accept = ".jpeg, .jpg, .png, .webp, .svg";
   input.onchange = async () => {
     if (input.files?.length) {
       const file = input.files[0];
-      const pos = editor.view.state.selection.from;
-      startImageUpload(file, editor.view, pos, uploadFile, setIsSubmitting);
+      const pos = savedSelection?.anchor ?? editor.view.state.selection.from;
+      startImageUpload(editor, file, editor.view, pos, uploadFile);
     }
   };
   input.click();

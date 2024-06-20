@@ -1,16 +1,19 @@
-import { useRouter } from "next/router";
-import { observer } from "mobx-react-lite";
+import isEmpty from "lodash/isEmpty";
 import isEqual from "lodash/isEqual";
+import { observer } from "mobx-react";
+import { useRouter } from "next/router";
+import { IIssueFilterOptions, TStaticViewTypes } from "@plane/types";
 // hooks
-import { useGlobalView, useIssues, useLabel, useUser } from "hooks/store";
 //ui
 import { Button } from "@plane/ui";
 // components
-import { AppliedFiltersList } from "components/issues";
+import { AppliedFiltersList } from "@/components/issues";
 // types
-import { IIssueFilterOptions, TStaticViewTypes } from "@plane/types";
-import { EIssueFilterType, EIssuesStoreType } from "constants/issue";
-import { DEFAULT_GLOBAL_VIEWS_LIST, EUserWorkspaceRoles } from "constants/workspace";
+import { GLOBAL_VIEW_UPDATED } from "@/constants/event-tracker";
+import { EIssueFilterType, EIssuesStoreType } from "@/constants/issue";
+import { DEFAULT_GLOBAL_VIEWS_LIST, EUserWorkspaceRoles } from "@/constants/workspace";
+// constants
+import { useEventTracker, useGlobalView, useIssues, useLabel, useUser } from "@/hooks/store";
 
 type Props = {
   globalViewId: string;
@@ -27,6 +30,7 @@ export const GlobalViewsAppliedFiltersRoot = observer((props: Props) => {
   } = useIssues(EIssuesStoreType.GLOBAL);
   const { workspaceLabels } = useLabel();
   const { globalViewMap, updateGlobalView } = useGlobalView();
+  const { captureEvent } = useEventTracker();
   const {
     membership: { currentWorkspaceRole },
   } = useUser();
@@ -73,7 +77,7 @@ export const GlobalViewsAppliedFiltersRoot = observer((props: Props) => {
     if (!workspaceSlug || !globalViewId) return;
     const newFilters: IIssueFilterOptions = {};
     Object.keys(userFilters ?? {}).forEach((key) => {
-      newFilters[key as keyof IIssueFilterOptions] = null;
+      newFilters[key as keyof IIssueFilterOptions] = [];
     });
     updateFilters(
       workspaceSlug.toString(),
@@ -91,17 +95,26 @@ export const GlobalViewsAppliedFiltersRoot = observer((props: Props) => {
       filters: {
         ...(appliedFilters ?? {}),
       },
+    }).then((res) => {
+      if (res)
+        captureEvent(GLOBAL_VIEW_UPDATED, {
+          view_id: res.id,
+          applied_filters: res.filters,
+          state: "SUCCESS",
+          element: "Spreadsheet view",
+        });
     });
   };
 
-  const areFiltersEqual = isEqual(appliedFilters, viewDetails?.filters);
+  const areFiltersEqual = isEqual(appliedFilters ?? {}, viewDetails?.filters ?? {});
 
   const isAuthorizedUser = !!currentWorkspaceRole && currentWorkspaceRole >= EUserWorkspaceRoles.MEMBER;
 
   const isDefaultView = DEFAULT_GLOBAL_VIEWS_LIST.map((view) => view.key).includes(globalViewId as TStaticViewTypes);
 
   // return if no filters are applied
-  if (!appliedFilters && areFiltersEqual) return null;
+
+  if (isEmpty(appliedFilters) && areFiltersEqual) return null;
 
   return (
     <div className="flex items-start justify-between gap-4 p-4">

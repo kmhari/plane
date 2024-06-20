@@ -1,4 +1,9 @@
-import { IIssueDisplayFilterOptions, IIssueDisplayProperties, IIssueFilterOptions } from "./view-props";
+import { TLogoProps } from "./common";
+import {
+  IIssueDisplayFilterOptions,
+  IIssueDisplayProperties,
+  IIssueFilterOptions,
+} from "./view-props";
 
 export interface IProjectView {
   id: string;
@@ -17,4 +22,5 @@ export interface IProjectView {
   query_data: IIssueFilterOptions;
   project: string;
   workspace: string;
+  logo_props: TLogoProps | undefined;
 }

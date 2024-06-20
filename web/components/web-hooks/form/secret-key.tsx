@@ -1,18 +1,21 @@
 import { useState, FC } from "react";
+import { observer } from "mobx-react";
 import { useRouter } from "next/router";
-import { Button, Tooltip } from "@plane/ui";
+// icons
 import { Copy, Eye, EyeOff, RefreshCw } from "lucide-react";
-import { observer } from "mobx-react-lite";
-// hooks
-import { useWebhook, useWorkspace } from "hooks/store";
-import useToast from "hooks/use-toast";
+import { IWebhook } from "@plane/types";
+// ui
+import { Button, Tooltip, TOAST_TYPE, setToast } from "@plane/ui";
 // helpers
-import { copyTextToClipboard } from "helpers/string.helper";
-import { csvDownload } from "helpers/download.helper";
+import { csvDownload } from "@/helpers/download.helper";
+import { copyTextToClipboard } from "@/helpers/string.helper";
+// hooks
+import { useWebhook, useWorkspace } from "@/hooks/store";
+// types
+import { usePlatformOS } from "@/hooks/use-platform-os";
 // utils
 import { getCurrentHookAsCSV } from "../utils";
-// types
-import { IWebhook } from "@plane/types";
+// hooks
 
 type Props = {
   data: Partial<IWebhook>;
@@ -29,23 +32,21 @@ export const WebhookSecretKey: FC<Props> = observer((props) => {
   // store hooks
   const { currentWorkspace } = useWorkspace();
   const { currentWebhook, regenerateSecretKey, webhookSecretKey } = useWebhook();
-  // hooks
-  const { setToastAlert } = useToast();
-
+  const { isMobile } = usePlatformOS();
   const handleCopySecretKey = () => {
     if (!webhookSecretKey) return;
 
     copyTextToClipboard(webhookSecretKey)
       .then(() =>
-        setToastAlert({
-          type: "success",
+        setToast({
+          type: TOAST_TYPE.SUCCESS,
           title: "Success!",
           message: "Secret key copied to clipboard.",
         })
       )
       .catch(() =>
-        setToastAlert({
-          type: "error",
+        setToast({
+          type: TOAST_TYPE.ERROR,
           title: "Error!",
           message: "Error occurred while copying secret key.",
         })
@@ -59,8 +60,8 @@ export const WebhookSecretKey: FC<Props> = observer((props) => {
 
     regenerateSecretKey(workspaceSlug.toString(), data.id)
       .then(() => {
-        setToastAlert({
-          type: "success",
+        setToast({
+          type: TOAST_TYPE.SUCCESS,
           title: "Success!",
           message: "New key regenerated successfully.",
         });
@@ -71,8 +72,8 @@ export const WebhookSecretKey: FC<Props> = observer((props) => {
         }
       })
       .catch((err) =>
-        setToastAlert({
-          type: "error",
+        setToast({
+          type: TOAST_TYPE.ERROR,
           title: "Error!",
           message: err?.error ?? "Something went wrong. Please try again.",
         })
@@ -93,15 +94,15 @@ export const WebhookSecretKey: FC<Props> = observer((props) => {
         <div className="space-y-2">
           {webhookId && <div className="text-sm font-medium">Secret key</div>}
           <div className="text-xs text-custom-text-400">Generate a token to sign-in to the webhook payload</div>
-          <div className="flex items-center gap-4">
-            <div className="flex flex-grow max-w-lg items-center justify-between self-stretch rounded border border-custom-border-200 px-2 py-1.5">
+          <div className="flex flex-col md:flex-row md:items-center gap-4">
+            <div className="flex flex-grow max-w-lg items-center justify-between self-stretch rounded border border-custom-border-200 px-2 h-8">
               <div className="select-none overflow-hidden font-medium">
                 {shouldShowKey ? (
                   <p className="text-xs">{webhookSecretKey}</p>
                 ) : (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 overflow-hidden mr-2">
                     {[...Array(30)].map((_, index) => (
-                      <div key={index} className="h-1 w-1 rounded-full bg-custom-text-400" />
+                      <div key={index} className="h-1 w-1 rounded-full bg-custom-text-400 flex-shrink-0" />
                     ))}
                   </div>
                 )}
@@ -109,7 +110,7 @@ export const WebhookSecretKey: FC<Props> = observer((props) => {
               {webhookSecretKey && (
                 <div className="flex items-center gap-2">
                   {SECRET_KEY_OPTIONS.map((option) => (
-                    <Tooltip key={option.key} tooltipContent={option.label}>
+                    <Tooltip key={option.key} tooltipContent={option.label} isMobile={isMobile}>
                       <button type="button" className="grid flex-shrink-0 place-items-center" onClick={option.onClick}>
                         <option.Icon className="h-3 w-3 text-custom-text-400" />
                       </button>

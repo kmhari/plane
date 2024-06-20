@@ -2,11 +2,11 @@
 
 """
 
-from django.urls import path, include, re_path
+from django.conf import settings
+from django.urls import include, path, re_path
 from django.views.generic import TemplateView
 
-from django.conf import settings
-
+handler404 = "plane.app.views.error_404.custom_404_view"
 
 urlpatterns = [
     path("", TemplateView.as_view(template_name="index.html")),
@@ -14,6 +14,7 @@ urlpatterns = [
     path("api/public/", include("plane.space.urls")),
     path("api/instances/", include("plane.license.urls")),
     path("api/v1/", include("plane.api.urls")),
+    path("auth/", include("plane.authentication.urls")),
     path("", include("plane.web.urls")),
 ]
 

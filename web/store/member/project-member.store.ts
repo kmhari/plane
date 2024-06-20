@@ -1,17 +1,18 @@
-import { action, computed, makeObservable, observable, runInAction } from "mobx";
-import { computedFn } from "mobx-utils";
 import set from "lodash/set";
 import sortBy from "lodash/sortBy";
-// services
-import { ProjectMemberService } from "services/project";
+import { action, computed, makeObservable, observable, runInAction } from "mobx";
+import { computedFn } from "mobx-utils";
 // types
-import { RootStore } from "store/root.store";
 import { IProjectBulkAddFormData, IProjectMember, IProjectMembership, IUserLite } from "@plane/types";
 // constants
-import { EUserProjectRoles } from "constants/project";
+import { EUserProjectRoles } from "@/constants/project";
+// services
+import { ProjectMemberService } from "@/services/project";
+// store
+import { RootStore } from "@/store/root.store";
+import { IRouterStore } from "@/store/router.store";
+import { IUserStore } from "@/store/user";
 import { IMemberRootStore } from ".";
-import { IRouterStore } from "store/application/router.store";
-import { IUserRootStore } from "store/user";
 
 interface IProjectMemberDetails {
   id: string;
@@ -54,7 +55,7 @@ export class ProjectMemberStore implements IProjectMemberStore {
   } = {};
   // stores
   routerStore: IRouterStore;
-  userStore: IUserRootStore;
+  userStore: IUserStore;
   memberRoot: IMemberRootStore;
   // services
   projectMemberService;
@@ -73,7 +74,7 @@ export class ProjectMemberStore implements IProjectMemberStore {
     });
 
     // root store
-    this.routerStore = _rootStore.app.router;
+    this.routerStore = _rootStore.router;
     this.userStore = _rootStore.user;
     this.memberRoot = _memberRoot;
     // services
@@ -88,7 +89,7 @@ export class ProjectMemberStore implements IProjectMemberStore {
     if (!projectId) return null;
     let members = Object.values(this.projectMemberMap?.[projectId] ?? {});
     members = sortBy(members, [
-      (m) => m.member !== this.userStore.currentUser?.id,
+      (m) => m.member !== this.userStore.data?.id,
       (m) => this.memberRoot.memberMap?.[m.member]?.display_name.toLowerCase(),
     ]);
     const memberIds = members.map((m) => m.member);
@@ -121,7 +122,7 @@ export class ProjectMemberStore implements IProjectMemberStore {
     if (!this.projectMemberMap?.[projectId]) return null;
     let members = Object.values(this.projectMemberMap?.[projectId]);
     members = sortBy(members, [
-      (m) => m.member !== this.userStore.currentUser?.id,
+      (m) => m.member !== this.userStore.data?.id,
       (m) => this.memberRoot?.memberMap?.[m.member]?.display_name?.toLowerCase(),
     ]);
     const memberIds = members.map((m) => m.member);

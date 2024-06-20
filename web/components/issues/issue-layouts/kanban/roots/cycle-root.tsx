@@ -1,16 +1,15 @@
-import React, { useMemo } from "react";
+import React, { useCallback } from "react";
+import { observer } from "mobx-react";
 import { useRouter } from "next/router";
-import { observer } from "mobx-react-lite";
+// components
+import { CycleIssueQuickActions } from "@/components/issues";
+// constants
+import { EIssuesStoreType } from "@/constants/issue";
+import { EUserProjectRoles } from "@/constants/project";
 // hooks
-import { useIssues } from "hooks/store";
-// ui
-import { CycleIssueQuickActions } from "components/issues";
-// types
-import { TIssue } from "@plane/types";
-import { EIssueActions } from "../../types";
+import { useCycle, useIssues, useUser } from "@/hooks/store";
 // components
 import { BaseKanBanRoot } from "../base-kanban-root";
-import { EIssuesStoreType } from "constants/issue";
 
 export interface ICycleKanBanLayout {}
 
@@ -19,42 +18,38 @@ export const CycleKanBanLayout: React.FC = observer(() => {
   const { workspaceSlug, projectId, cycleId } = router.query;
 
   // store
-  const { issues, issuesFilter } = useIssues(EIssuesStoreType.CYCLE);
+  const { issues } = useIssues(EIssuesStoreType.CYCLE);
+  const { currentProjectCompletedCycleIds } = useCycle();
+  const {
+    membership: { currentProjectRole },
+  } = useUser();
 
-  const issueActions = useMemo(
-    () => ({
-      [EIssueActions.UPDATE]: async (issue: TIssue) => {
-        if (!workspaceSlug || !cycleId) return;
+  const isCompletedCycle =
+    cycleId && currentProjectCompletedCycleIds ? currentProjectCompletedCycleIds.includes(cycleId.toString()) : false;
+  const isEditingAllowed = !!currentProjectRole && currentProjectRole >= EUserProjectRoles.MEMBER;
 
-        await issues.updateIssue(workspaceSlug.toString(), issue.project_id, issue.id, issue, cycleId.toString());
-      },
-      [EIssueActions.DELETE]: async (issue: TIssue) => {
-        if (!workspaceSlug || !cycleId) return;
+  const canEditIssueProperties = useCallback(
+    () => !isCompletedCycle && isEditingAllowed,
+    [isCompletedCycle, isEditingAllowed]
+  );
 
-        await issues.removeIssue(workspaceSlug.toString(), issue.project_id, issue.id, cycleId.toString());
-      },
-      [EIssueActions.REMOVE]: async (issue: TIssue) => {
-        if (!workspaceSlug || !cycleId) return;
-
-        await issues.removeIssueFromCycle(workspaceSlug.toString(), issue.project_id, cycleId.toString(), issue.id);
-      },
-    }),
-    [issues, workspaceSlug, cycleId]
+  const addIssuesToView = useCallback(
+    (issueIds: string[]) => {
+      if (!workspaceSlug || !projectId || !cycleId) throw new Error();
+      return issues.addIssueToCycle(workspaceSlug.toString(), projectId.toString(), cycleId.toString(), issueIds);
+    },
+    [issues?.addIssueToCycle, workspaceSlug, projectId, cycleId]
   );
 
   return (
     <BaseKanBanRoot
-      issueActions={issueActions}
-      issues={issues}
-      issuesFilter={issuesFilter}
-      showLoader={true}
+      showLoader
       QuickActions={CycleIssueQuickActions}
       viewId={cycleId?.toString() ?? ""}
       storeType={EIssuesStoreType.CYCLE}
-      addIssuesToView={(issueIds: string[]) => {
-        if (!workspaceSlug || !projectId || !cycleId) throw new Error();
-        return issues.addIssueToCycle(workspaceSlug.toString(), projectId.toString(), cycleId.toString(), issueIds);
-      }}
+      addIssuesToView={addIssuesToView}
+      canEditPropertiesBasedOnProject={canEditIssueProperties}
+      isCompletedCycle={isCompletedCycle}
     />
   );
 });

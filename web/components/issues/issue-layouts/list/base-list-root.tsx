@@ -1,69 +1,46 @@
-import { List } from "./default";
 import { FC, useCallback } from "react";
 import { observer } from "mobx-react-lite";
 // types
-import { TIssue } from "@plane/types";
-import { IProjectIssues, IProjectIssuesFilter } from "store/issue/project";
-import { ICycleIssues, ICycleIssuesFilter } from "store/issue/cycle";
-import { IModuleIssues, IModuleIssuesFilter } from "store/issue/module";
-import { IProfileIssues, IProfileIssuesFilter } from "store/issue/profile";
-import { IProjectViewIssues, IProjectViewIssuesFilter } from "store/issue/project-views";
-import { IDraftIssuesFilter, IDraftIssues } from "store/issue/draft";
-import { IArchivedIssuesFilter, IArchivedIssues } from "store/issue/archived";
+import { EIssuesStoreType } from "@/constants/issue";
+import { EUserProjectRoles } from "@/constants/project";
+import { useIssues, useUser } from "@/hooks/store";
+import { useGroupIssuesDragNDrop } from "@/hooks/use-group-dragndrop";
+import { useIssuesActions } from "@/hooks/use-issues-actions";
 // components
-import { IQuickActionProps } from "./list-view-types";
+import { List } from "./default";
+import { IQuickActionProps, TRenderQuickActions } from "./list-view-types";
 // constants
-import { EUserProjectRoles } from "constants/project";
-import { TCreateModalStoreTypes } from "constants/issue";
 // hooks
-import { useIssues, useUser } from "hooks/store";
 
-enum EIssueActions {
-  UPDATE = "update",
-  DELETE = "delete",
-  REMOVE = "remove",
-}
-
+type ListStoreType =
+  | EIssuesStoreType.PROJECT
+  | EIssuesStoreType.MODULE
+  | EIssuesStoreType.CYCLE
+  | EIssuesStoreType.PROJECT_VIEW
+  | EIssuesStoreType.DRAFT
+  | EIssuesStoreType.PROFILE
+  | EIssuesStoreType.ARCHIVED;
 interface IBaseListRoot {
-  issuesFilter:
-    | IProjectIssuesFilter
-    | IModuleIssuesFilter
-    | ICycleIssuesFilter
-    | IProjectViewIssuesFilter
-    | IProfileIssuesFilter
-    | IDraftIssuesFilter
-    | IArchivedIssuesFilter;
-  issues:
-    | IProjectIssues
-    | ICycleIssues
-    | IModuleIssues
-    | IProjectViewIssues
-    | IProfileIssues
-    | IDraftIssues
-    | IArchivedIssues;
   QuickActions: FC<IQuickActionProps>;
-  issueActions: {
-    [EIssueActions.DELETE]: (issue: TIssue) => Promise<void>;
-    [EIssueActions.UPDATE]?: (issue: TIssue) => Promise<void>;
-    [EIssueActions.REMOVE]?: (issue: TIssue) => Promise<void>;
-  };
   viewId?: string;
-  storeType: TCreateModalStoreTypes;
+  storeType: ListStoreType;
   addIssuesToView?: (issueIds: string[]) => Promise<any>;
   canEditPropertiesBasedOnProject?: (projectId: string) => boolean;
+  isCompletedCycle?: boolean;
 }
-
 export const BaseListRoot = observer((props: IBaseListRoot) => {
   const {
-    issuesFilter,
-    issues,
     QuickActions,
-    issueActions,
     viewId,
     storeType,
     addIssuesToView,
     canEditPropertiesBasedOnProject,
+    isCompletedCycle = false,
   } = props;
+  // router
+  //stores
+  const { issuesFilter, issues } = useIssues(storeType);
+  const { updateIssue, removeIssue, removeIssueFromView, archiveIssue, restoreIssue } = useIssuesActions(storeType);
   // mobx store
   const {
     membership: { currentProjectRole },
@@ -81,7 +58,7 @@ export const BaseListRoot = observer((props: IBaseListRoot) => {
       const isEditingAllowedBasedOnProject =
         canEditPropertiesBasedOnProject && projectId ? canEditPropertiesBasedOnProject(projectId) : isEditingAllowed;
 
-      return enableInlineEditing && isEditingAllowedBasedOnProject;
+      return !!enableInlineEditing && isEditingAllowedBasedOnProject;
     },
     [canEditPropertiesBasedOnProject, enableInlineEditing, isEditingAllowed]
   );
@@ -90,54 +67,49 @@ export const BaseListRoot = observer((props: IBaseListRoot) => {
   const displayProperties = issuesFilter?.issueFilters?.displayProperties;
 
   const group_by = displayFilters?.group_by || null;
+  const orderBy = displayFilters?.order_by || undefined;
   const showEmptyGroup = displayFilters?.show_empty_groups ?? false;
 
-  const handleIssues = useCallback(
-    async (issue: TIssue, action: EIssueActions) => {
-      if (issueActions[action]) {
-        await issueActions[action]!(issue);
-      }
-    },
-    [issueActions]
-  );
+  const handleOnDrop = useGroupIssuesDragNDrop(storeType, orderBy, group_by);
 
-  const renderQuickActions = useCallback(
-    (issue: TIssue) => (
+  const renderQuickActions: TRenderQuickActions = useCallback(
+    ({ issue, parentRef }) => (
       <QuickActions
+        parentRef={parentRef}
         issue={issue}
-        handleDelete={async () => handleIssues(issue, EIssueActions.DELETE)}
-        handleUpdate={
-          issueActions[EIssueActions.UPDATE] ? async (data) => handleIssues(data, EIssueActions.UPDATE) : undefined
-        }
-        handleRemoveFromView={
-          issueActions[EIssueActions.REMOVE] ? async () => handleIssues(issue, EIssueActions.REMOVE) : undefined
-        }
+        handleDelete={async () => removeIssue(issue.project_id, issue.id)}
+        handleUpdate={async (data) => updateIssue && updateIssue(issue.project_id, issue.id, data)}
+        handleRemoveFromView={async () => removeIssueFromView && removeIssueFromView(issue.project_id, issue.id)}
+        handleArchive={async () => archiveIssue && archiveIssue(issue.project_id, issue.id)}
+        handleRestore={async () => restoreIssue && restoreIssue(issue.project_id, issue.id)}
+        readOnly={!isEditingAllowed || isCompletedCycle}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [handleIssues]
+    [isEditingAllowed, isCompletedCycle, removeIssue, updateIssue, removeIssueFromView, archiveIssue, restoreIssue]
   );
 
   return (
-    <>
-      <div className={`relative h-full w-full bg-custom-background-90`}>
-        <List
-          issuesMap={issueMap}
-          displayProperties={displayProperties}
-          group_by={group_by}
-          handleIssues={handleIssues}
-          quickActions={renderQuickActions}
-          issueIds={issueIds}
-          showEmptyGroup={showEmptyGroup}
-          viewId={viewId}
-          quickAddCallback={issues?.quickAddIssue}
-          enableIssueQuickAdd={!!enableQuickAdd}
-          canEditProperties={canEditProperties}
-          disableIssueCreation={!enableIssueCreation || !isEditingAllowed}
-          storeType={storeType}
-          addIssuesToView={addIssuesToView}
-        />
-      </div>
-    </>
+    <div className={`relative h-full w-full bg-custom-background-90`}>
+      <List
+        issuesMap={issueMap}
+        displayProperties={displayProperties}
+        group_by={group_by}
+        orderBy={orderBy}
+        updateIssue={updateIssue}
+        quickActions={renderQuickActions}
+        issueIds={issueIds}
+        showEmptyGroup={showEmptyGroup}
+        viewId={viewId}
+        quickAddCallback={issues?.quickAddIssue}
+        enableIssueQuickAdd={!!enableQuickAdd}
+        canEditProperties={canEditProperties}
+        disableIssueCreation={!enableIssueCreation || !isEditingAllowed}
+        storeType={storeType}
+        addIssuesToView={addIssuesToView}
+        isCompletedCycle={isCompletedCycle}
+        handleOnDrop={handleOnDrop}
+      />
+    </div>
   );
 });

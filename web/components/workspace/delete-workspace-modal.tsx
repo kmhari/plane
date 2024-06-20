@@ -1,16 +1,17 @@
 import React from "react";
+import { observer } from "mobx-react";
 import { useRouter } from "next/router";
-import { observer } from "mobx-react-lite";
 import { Controller, useForm } from "react-hook-form";
-import { Dialog, Transition } from "@headlessui/react";
 import { AlertTriangle } from "lucide-react";
-// hooks
-import { useApplication, useWorkspace } from "hooks/store";
-import useToast from "hooks/use-toast";
-// ui
-import { Button, Input } from "@plane/ui";
-// types
+import { Dialog, Transition } from "@headlessui/react";
 import type { IWorkspace } from "@plane/types";
+// ui
+import { Button, Input, TOAST_TYPE, setToast } from "@plane/ui";
+// constants
+import { WORKSPACE_DELETED } from "@/constants/event-tracker";
+// hooks
+import { useEventTracker, useWorkspace } from "@/hooks/store";
+// types
 
 type Props = {
   isOpen: boolean;
@@ -28,12 +29,8 @@ export const DeleteWorkspaceModal: React.FC<Props> = observer((props) => {
   // router
   const router = useRouter();
   // store hooks
-  const {
-    eventTracker: { postHogEventTracker },
-  } = useApplication();
+  const { captureWorkspaceEvent } = useEventTracker();
   const { deleteWorkspace } = useWorkspace();
-  // toast alert
-  const { setToastAlert } = useToast();
   // form info
   const {
     control,
@@ -58,27 +55,36 @@ export const DeleteWorkspaceModal: React.FC<Props> = observer((props) => {
     if (!data || !canDelete) return;
 
     await deleteWorkspace(data.slug)
-      .then((res) => {
+      .then(() => {
         handleClose();
         router.push("/");
-        postHogEventTracker("WORKSPACE_DELETED", {
-          res,
-          state: "SUCCESS",
+        captureWorkspaceEvent({
+          eventName: WORKSPACE_DELETED,
+          payload: {
+            ...data,
+            state: "SUCCESS",
+            element: "Workspace general settings page",
+          },
         });
-        setToastAlert({
-          type: "success",
+        setToast({
+          type: TOAST_TYPE.SUCCESS,
           title: "Success!",
           message: "Workspace deleted successfully.",
         });
       })
       .catch(() => {
-        setToastAlert({
-          type: "error",
+        setToast({
+          type: TOAST_TYPE.ERROR,
           title: "Error!",
           message: "Something went wrong. Please try again later.",
         });
-        postHogEventTracker("WORKSPACE_DELETED", {
-          state: "FAILED",
+        captureWorkspaceEvent({
+          eventName: WORKSPACE_DELETED,
+          payload: {
+            ...data,
+            state: "FAILED",
+            element: "Workspace general settings page",
+          },
         });
       });
   };

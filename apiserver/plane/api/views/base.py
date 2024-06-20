@@ -1,25 +1,24 @@
 # Python imports
 import zoneinfo
-import json
 
 # Django imports
 from django.conf import settings
-from django.db import IntegrityError
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.db import IntegrityError
+from django.urls import resolve
 from django.utils import timezone
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 # Third party imports
 from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from rest_framework import status
-from sentry_sdk import capture_exception
 
 # Module imports
 from plane.api.middleware.api_authentication import APIKeyAuthentication
 from plane.api.rate_limit import ApiKeyRateThrottle
+from plane.utils.exception_logger import log_exception
 from plane.utils.paginator import BasePaginator
-from plane.bgtasks.webhook_task import send_webhook
 
 
 class TimezoneMixin:
@@ -34,34 +33,6 @@ class TimezoneMixin:
             timezone.activate(zoneinfo.ZoneInfo(request.user.user_timezone))
         else:
             timezone.deactivate()
-
-
-class WebhookMixin:
-    webhook_event = None
-    bulk = False
-
-    def finalize_response(self, request, response, *args, **kwargs):
-        response = super().finalize_response(
-            request, response, *args, **kwargs
-        )
-
-        # Check for the case should webhook be sent
-        if (
-            self.webhook_event
-            and self.request.method in ["POST", "PATCH", "DELETE"]
-            and response.status_code in [200, 201, 204]
-        ):
-            # Push the object to delay
-            send_webhook.delay(
-                event=self.webhook_event,
-                payload=response.data,
-                kw=self.kwargs,
-                action=self.request.method,
-                slug=self.workspace_slug,
-                bulk=self.bulk,
-            )
-
-        return response
 
 
 class BaseAPIView(TimezoneMixin, APIView, BasePaginator):
@@ -99,27 +70,23 @@ class BaseAPIView(TimezoneMixin, APIView, BasePaginator):
 
             if isinstance(e, ValidationError):
                 return Response(
-                    {
-                        "error": "The provided payload is not valid please try with a valid payload"
-                    },
+                    {"error": "Please provide valid detail"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             if isinstance(e, ObjectDoesNotExist):
                 return Response(
-                    {"error": f"The required object does not exist."},
+                    {"error": "The requested resource does not exist."},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
             if isinstance(e, KeyError):
                 return Response(
-                    {"error": f" The required key does not exist."},
+                    {"error": "The required key does not exist."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if settings.DEBUG:
-                print(e)
-            capture_exception(e)
+            log_exception(e)
             return Response(
                 {"error": "Something went wrong please try again later"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -162,7 +129,12 @@ class BaseAPIView(TimezoneMixin, APIView, BasePaginator):
 
     @property
     def project_id(self):
-        return self.kwargs.get("project_id", None)
+        project_id = self.kwargs.get("project_id", None)
+        if project_id:
+            return project_id
+
+        if resolve(self.request.path_info).url_name == "project":
+            return self.kwargs.get("pk", None)
 
     @property
     def fields(self):

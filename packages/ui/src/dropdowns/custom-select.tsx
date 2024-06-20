@@ -47,6 +47,11 @@ const CustomSelect = (props: ICustomSelectProps) => {
   const handleKeyDown = useDropdownKeyDown(openDropdown, closeDropdown, isOpen);
   useOutsideClickDetector(dropdownRef, closeDropdown);
 
+  const toggleDropdown = () => {
+    if (isOpen) closeDropdown();
+    else openDropdown();
+  };
+
   return (
     <Listbox
       as="div"
@@ -67,7 +72,7 @@ const CustomSelect = (props: ICustomSelectProps) => {
               className={`flex items-center justify-between gap-1 text-xs ${
                 disabled ? "cursor-not-allowed text-custom-text-200" : "cursor-pointer hover:bg-custom-background-80"
               } ${customButtonClassName}`}
-              onClick={openDropdown}
+              onClick={toggleDropdown}
             >
               {customButton}
             </button>
@@ -82,7 +87,7 @@ const CustomSelect = (props: ICustomSelectProps) => {
               } ${
                 disabled ? "cursor-not-allowed text-custom-text-200" : "cursor-pointer hover:bg-custom-background-80"
               } ${buttonClassName}`}
-              onClick={openDropdown}
+              onClick={toggleDropdown}
             >
               {label}
               {!noChevron && !disabled && <ChevronDown className="h-3 w-3" aria-hidden="true" />}
@@ -91,7 +96,7 @@ const CustomSelect = (props: ICustomSelectProps) => {
         )}
       </>
       {isOpen && (
-        <Listbox.Options className="fixed z-10" onClick={() => closeDropdown()} static>
+        <Listbox.Options className="fixed z-20" onClick={() => closeDropdown()} static>
           <div
             className={cn(
               "my-1 overflow-y-scroll rounded-md border-[0.5px] border-custom-border-300 bg-custom-background-100 px-2 py-2.5 text-xs shadow-custom-shadow-rg focus:outline-none min-w-[12rem] whitespace-nowrap",
@@ -122,7 +127,7 @@ const Option = (props: ICustomSelectItemProps) => {
       value={value}
       className={({ active }) =>
         cn(
-          "cursor-pointer select-none truncate rounded px-1 py-1.5 text-custom-text-200",
+          "cursor-pointer select-none truncate rounded px-1 py-1.5 text-custom-text-200 flex items-center justify-between gap-2",
           {
             "bg-custom-background-80": active,
           },
@@ -131,10 +136,10 @@ const Option = (props: ICustomSelectItemProps) => {
       }
     >
       {({ selected }) => (
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">{children}</div>
+        <>
+          {children}
           {selected && <Check className="h-3.5 w-3.5 flex-shrink-0" />}
-        </div>
+        </>
       )}
     </Listbox.Option>
   );

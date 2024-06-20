@@ -1,10 +1,24 @@
+import differenceInCalendarDays from "date-fns/differenceInCalendarDays";
 import { v4 as uuidv4 } from "uuid";
-// helpers
-import { orderArrayBy } from "helpers/array.helper";
 // types
-import { TIssue, TIssueGroupByOptions, TIssueLayouts, TIssueOrderByOptions, TIssueParams } from "@plane/types";
+import {
+  TGroupedIssues,
+  TIssue,
+  TIssueGroupByOptions,
+  TIssueLayouts,
+  TIssueOrderByOptions,
+  TIssueParams,
+  TStateGroups,
+  TSubGroupedIssues,
+  TUnGroupedIssues,
+} from "@plane/types";
+import { IGanttBlock } from "@/components/gantt-chart";
 // constants
-import { ISSUE_DISPLAY_FILTERS_BY_LAYOUT } from "constants/issue";
+import { ISSUE_DISPLAY_FILTERS_BY_LAYOUT } from "@/constants/issue";
+import { STATE_GROUPS } from "@/constants/state";
+// helpers
+import { orderArrayBy } from "@/helpers/array.helper";
+import { getDate } from "@/helpers/date-time.helper";
 
 type THandleIssuesMutation = (
   formData: Partial<TIssue>,
@@ -123,6 +137,7 @@ export const createIssuePayload: (projectId: string, formData: Partial<TIssue>) 
   const payload: TIssue = {
     id: uuidv4(),
     project_id: projectId,
+    priority: "none",
     // tempId is used for optimistic updates. It is not a part of the API response.
     tempId: uuidv4(),
     // to be overridden by the form data
@@ -130,4 +145,112 @@ export const createIssuePayload: (projectId: string, formData: Partial<TIssue>) 
   } as TIssue;
 
   return payload;
+};
+
+/**
+ * @description check if the issue due date should be highlighted
+ * @param date
+ * @param stateGroup
+ * @returns boolean
+ */
+export const shouldHighlightIssueDueDate = (
+  date: string | Date | null,
+  stateGroup: TStateGroups | undefined
+): boolean => {
+  if (!date || !stateGroup) return false;
+  // if the issue is completed or cancelled, don't highlight the due date
+  if ([STATE_GROUPS.completed.key, STATE_GROUPS.cancelled.key].includes(stateGroup)) return false;
+
+  const parsedDate = getDate(date);
+  if (!parsedDate) return false;
+
+  const targetDateDistance = differenceInCalendarDays(parsedDate, new Date());
+
+  // if the issue is overdue, highlight the due date
+  return targetDateDistance <= 0;
+};
+export const renderIssueBlocksStructure = (blocks: TIssue[]): IGanttBlock[] =>
+  blocks?.map((block) => ({
+    data: block,
+    id: block.id,
+    sort_order: block.sort_order,
+    start_date: getDate(block.start_date),
+    target_date: getDate(block.target_date),
+  }));
+
+export function getChangedIssuefields(formData: Partial<TIssue>, dirtyFields: { [key: string]: boolean | undefined }) {
+  const changedFields: Partial<TIssue> = {};
+
+  const dirtyFieldKeys = Object.keys(dirtyFields) as (keyof TIssue)[];
+  for (const dirtyField of dirtyFieldKeys) {
+    if (!!dirtyFields[dirtyField]) {
+      changedFields[dirtyField] = formData[dirtyField];
+    }
+  }
+
+  return changedFields;
+}
+
+export const formatTextList = (TextArray: string[]): string => {
+  const count = TextArray.length;
+  switch (count) {
+    case 0:
+      return "";
+    case 1:
+      return TextArray[0];
+    case 2:
+      return `${TextArray[0]} and ${TextArray[1]}`;
+    case 3:
+      return `${TextArray.slice(0, 2).join(", ")}, and ${TextArray[2]}`;
+    case 4:
+      return `${TextArray.slice(0, 3).join(", ")}, and ${TextArray[3]}`;
+    default:
+      return `${TextArray.slice(0, 3).join(", ")}, and +${count - 3} more`;
+  }
+};
+
+export const getDescriptionPlaceholder = (isFocused: boolean, description: string | undefined): string => {
+  const isDescriptionEmpty = !description || description === "<p></p>" || description.trim() === "";
+  if (!isDescriptionEmpty || isFocused) return "Press '/' for commands...";
+  else return "Click to add description";
+};
+
+export const issueCountBasedOnFilters = (
+  issueIds: TUnGroupedIssues | TGroupedIssues | TSubGroupedIssues,
+  layout: TIssueLayouts,
+  groupBy: string | undefined,
+  subGroupBy: string | undefined
+): number => {
+  let issuesCount = 0;
+  if (!layout) return issuesCount;
+
+  if (["spreadsheet", "gantt_chart"].includes(layout)) {
+    issuesCount = (issueIds as TUnGroupedIssues)?.length;
+  } else if (layout === "calendar") {
+    Object.keys(issueIds || {}).map((groupId) => {
+      issuesCount += (issueIds as TGroupedIssues)?.[groupId]?.length;
+    });
+  } else if (layout === "list") {
+    if (groupBy) {
+      Object.keys(issueIds || {}).map((groupId) => {
+        issuesCount += (issueIds as TGroupedIssues)?.[groupId]?.length;
+      });
+    } else {
+      issuesCount = (issueIds as TUnGroupedIssues)?.length;
+    }
+  } else if (layout === "kanban") {
+    if (groupBy && subGroupBy) {
+      Object.keys(issueIds || {}).map((groupId) => {
+        Object.keys((issueIds as TSubGroupedIssues)?.[groupId] || {}).map((subGroupId) => {
+          issuesCount += (issueIds as TSubGroupedIssues)?.[groupId]?.[subGroupId]?.length || 0;
+        });
+      });
+    } else if (groupBy) {
+      Object.keys(issueIds || {}).map((groupId) => {
+        issuesCount += (issueIds as TGroupedIssues)?.[groupId]?.length;
+      });
+    }
+  }
+
+  return issuesCount;
 };

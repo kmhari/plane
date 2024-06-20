@@ -2,18 +2,19 @@
 from uuid import uuid4
 
 # Django imports
-from django.contrib.postgres.fields import ArrayField
-from django.db import models
 from django.conf import settings
+from django.contrib.postgres.fields import ArrayField
+from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.core.validators import MinValueValidator, MaxValueValidator
-from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 # Module imports
-from . import ProjectBaseModel
 from plane.utils.html_processor import strip_tags
+
+from .project import ProjectBaseModel
 
 
 def get_default_properties():
@@ -91,6 +92,7 @@ class IssueManager(models.Manager):
                 | models.Q(issue_inbox__isnull=True)
             )
             .exclude(archived_at__isnull=False)
+            .exclude(project__archived_at__isnull=False)
             .exclude(is_draft=True)
         )
 
@@ -118,7 +120,7 @@ class Issue(ProjectBaseModel):
         related_name="state_issue",
     )
     estimate_point = models.IntegerField(
-        validators=[MinValueValidator(0), MaxValueValidator(7)],
+        validators=[MinValueValidator(0), MaxValueValidator(12)],
         null=True,
         blank=True,
     )
@@ -126,7 +128,7 @@ class Issue(ProjectBaseModel):
     description = models.JSONField(blank=True, default=dict)
     description_html = models.TextField(blank=True, default="<p></p>")
     description_stripped = models.TextField(blank=True, null=True)
-    time_consumed = models.SmallIntegerField(blank=False, null=False, default=0)
+    description_binary = models.BinaryField(null=True)
     priority = models.CharField(
         max_length=30,
         choices=PRIORITY_CHOICES,
@@ -171,14 +173,14 @@ class Issue(ProjectBaseModel):
                 from plane.db.models import State
 
                 default_state = State.objects.filter(
-                    ~models.Q(name="Triage"),
+                    ~models.Q(is_triage=True),
                     project=self.project,
                     default=True,
                 ).first()
                 # if there is no default state assign any random state
                 if default_state is None:
                     random_state = State.objects.filter(
-                        ~models.Q(name="Triage"), project=self.project
+                        ~models.Q(is_triage=True), project=self.project
                     ).first()
                     self.state = random_state
                 else:
@@ -321,7 +323,7 @@ class IssueAssignee(ProjectBaseModel):
 
 class IssueLink(ProjectBaseModel):
     title = models.CharField(max_length=255, null=True, blank=True)
-    url = models.URLField()
+    url = models.TextField()
     issue = models.ForeignKey(
         "db.Issue", on_delete=models.CASCADE, related_name="issue_link"
     )

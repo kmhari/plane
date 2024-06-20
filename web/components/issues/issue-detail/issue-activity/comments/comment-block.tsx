@@ -1,9 +1,10 @@
 import { FC, ReactNode } from "react";
+import { observer } from "mobx-react";
 import { MessageCircle } from "lucide-react";
 // hooks
-import { useIssueDetail } from "hooks/store";
+import { calculateTimeAgo } from "@/helpers/date-time.helper";
+import { useIssueDetail } from "@/hooks/store";
 // helpers
-import { calculateTimeAgo } from "helpers/date-time.helper";
 
 type TIssueCommentBlock = {
   commentId: string;
@@ -12,7 +13,7 @@ type TIssueCommentBlock = {
   children: ReactNode;
 };
 
-export const IssueCommentBlock: FC<TIssueCommentBlock> = (props) => {
+export const IssueCommentBlock: FC<TIssueCommentBlock> = observer((props) => {
   const { commentId, ends, quickActions, children } = props;
   // hooks
   const {
@@ -24,7 +25,7 @@ export const IssueCommentBlock: FC<TIssueCommentBlock> = (props) => {
   if (!comment) return <></>;
   return (
     <div className={`relative flex gap-3 ${ends === "top" ? `pb-2` : ends === "bottom" ? `pt-2` : `py-2`}`}>
-      <div className="absolute left-[13px] top-0 bottom-0 w-0.5 bg-custom-background-80" aria-hidden={true} />
+      <div className="absolute left-[13px] top-0 bottom-0 w-0.5 bg-custom-background-80" aria-hidden />
       <div className="flex-shrink-0 relative w-7 h-7 rounded-full flex justify-center items-center z-10 bg-gray-500 text-white border border-white uppercase font-medium">
         {comment.actor_detail.avatar && comment.actor_detail.avatar !== "" ? (
           <img
@@ -47,8 +48,8 @@ export const IssueCommentBlock: FC<TIssueCommentBlock> = (props) => {
           <MessageCircle className="w-3 h-3" color="#6b7280" />
         </div>
       </div>
-      <div className="w-full relative flex ">
-        <div className="w-full space-y-1">
+      <div className="w-full truncate relative flex ">
+        <div className="w-full truncate space-y-1">
           <div>
             <div className="text-xs capitalize">
               {comment.actor_detail.is_bot
@@ -63,4 +64,4 @@ export const IssueCommentBlock: FC<TIssueCommentBlock> = (props) => {
       </div>
     </div>
   );
-};
+});

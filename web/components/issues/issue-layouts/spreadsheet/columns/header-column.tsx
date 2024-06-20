@@ -1,5 +1,4 @@
 //ui
-import { CustomMenu } from "@plane/ui";
 import {
   ArrowDownWideNarrow,
   ArrowUpNarrowWide,
@@ -9,21 +8,23 @@ import {
   ListFilter,
   MoveRight,
 } from "lucide-react";
-//hooks
-import useLocalStorage from "hooks/use-local-storage";
-//types
 import { IIssueDisplayFilterOptions, IIssueDisplayProperties, TIssueOrderByOptions } from "@plane/types";
+import { CustomMenu } from "@plane/ui";
+//hooks
+import { SPREADSHEET_PROPERTY_DETAILS } from "@/constants/spreadsheet";
+import useLocalStorage from "@/hooks/use-local-storage";
+//types
 //constants
-import { SPREADSHEET_PROPERTY_DETAILS } from "constants/spreadsheet";
 
 interface Props {
   property: keyof IIssueDisplayProperties;
   displayFilters: IIssueDisplayFilterOptions;
   handleDisplayFilterUpdate: (data: Partial<IIssueDisplayFilterOptions>) => void;
+  onClose: () => void;
 }
 
-export const SpreadsheetHeaderColumn = (props: Props) => {
-  const { displayFilters, handleDisplayFilterUpdate, property } = props;
+export const HeaderColumn = (props: Props) => {
+  const { displayFilters, handleDisplayFilterUpdate, property, onClose } = props;
 
   const { storedValue: selectedMenuItem, setValue: setSelectedMenuItem } = useLocalStorage(
     "spreadsheetViewSorting",
@@ -44,7 +45,8 @@ export const SpreadsheetHeaderColumn = (props: Props) => {
 
   return (
     <CustomMenu
-      customButtonClassName="!w-full"
+      customButtonClassName="clickable !w-full"
+      customButtonTabIndex={-1}
       className="!w-full"
       customButton={
         <div className="flex w-full cursor-pointer items-center justify-between gap-1.5 py-2 text-sm text-custom-text-200 hover:text-custom-text-100">
@@ -62,7 +64,9 @@ export const SpreadsheetHeaderColumn = (props: Props) => {
           </div>
         </div>
       }
-      placement="bottom-end"
+      onMenuClose={onClose}
+      placement="bottom-start"
+      closeOnSelect
     >
       <CustomMenu.MenuItem onClick={() => handleOrderBy(propertyDetails.ascendingOrderKey, property)}>
         <div

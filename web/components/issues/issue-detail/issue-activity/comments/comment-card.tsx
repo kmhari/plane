@@ -1,41 +1,52 @@
 import { FC, useEffect, useRef, useState } from "react";
+import { observer } from "mobx-react";
 import { useForm } from "react-hook-form";
 import { Check, Globe2, Lock, Pencil, Trash2, X } from "lucide-react";
-// hooks
-import { useIssueDetail, useMention, useUser, useWorkspace } from "hooks/store";
-// components
-import { IssueCommentBlock } from "./comment-block";
-import { LiteTextEditorWithRef, LiteReadOnlyEditorWithRef } from "@plane/lite-text-editor";
-import { IssueCommentReaction } from "../../reactions/issue-comment";
+import { EditorReadOnlyRefApi, EditorRefApi } from "@plane/lite-text-editor";
+import { TIssueComment } from "@plane/types";
 // ui
 import { CustomMenu } from "@plane/ui";
-// services
-import { FileService } from "services/file.service";
-// types
-import { TIssueComment } from "@plane/types";
+// components
+import { LiteTextEditor, LiteTextReadOnlyEditor } from "@/components/editor";
+// constants
+import { EIssueCommentAccessSpecifier } from "@/constants/issue";
+// helpers
+import { isEmptyHtmlString } from "@/helpers/string.helper";
+// hooks
+import { useIssueDetail, useUser, useWorkspace } from "@/hooks/store";
+// components
+import { IssueCommentReaction } from "../../reactions/issue-comment";
 import { TActivityOperations } from "../root";
-
-const fileService = new FileService();
+import { IssueCommentBlock } from "./comment-block";
 
 type TIssueCommentCard = {
+  projectId: string;
   workspaceSlug: string;
   commentId: string;
   activityOperations: TActivityOperations;
   ends: "top" | "bottom" | undefined;
   showAccessSpecifier?: boolean;
+  disabled?: boolean;
 };
 
-export const IssueCommentCard: FC<TIssueCommentCard> = (props) => {
-  const { workspaceSlug, commentId, activityOperations, ends, showAccessSpecifier = false } = props;
+export const IssueCommentCard: FC<TIssueCommentCard> = observer((props) => {
+  const {
+    workspaceSlug,
+    projectId,
+    commentId,
+    activityOperations,
+    ends,
+    showAccessSpecifier = false,
+    disabled = false,
+  } = props;
   // hooks
   const {
     comment: { getCommentById },
   } = useIssueDetail();
-  const { currentUser } = useUser();
-  const { mentionHighlights, mentionSuggestions } = useMention();
+  const { data: currentUser } = useUser();
   // refs
-  const editorRef = useRef<any>(null);
-  const showEditorRef = useRef<any>(null);
+  const editorRef = useRef<EditorRefApi>(null);
+  const showEditorRef = useRef<EditorReadOnlyRefApi>(null);
   // state
   const [isEditing, setIsEditing] = useState(false);
 
@@ -59,13 +70,19 @@ export const IssueCommentCard: FC<TIssueCommentCard> = (props) => {
 
     activityOperations.updateComment(comment.id, formData);
 
-    editorRef.current?.setEditorValue(formData.comment_html);
-    showEditorRef.current?.setEditorValue(formData.comment_html);
+    editorRef.current?.setEditorValue(formData?.comment_html ?? "<p></p>");
+    showEditorRef.current?.setEditorValue(formData?.comment_html ?? "<p></p>");
   };
 
   useEffect(() => {
     isEditing && setFocus("comment_html");
   }, [isEditing, setFocus]);
+
+  const isEmpty =
+    watch("comment_html") === "" ||
+    watch("comment_html")?.trim() === "" ||
+    watch("comment_html") === "<p></p>" ||
+    isEmptyHtmlString(watch("comment_html") ?? "");
 
   if (!comment || !currentUser) return <></>;
   return (
@@ -73,8 +90,8 @@ export const IssueCommentCard: FC<TIssueCommentCard> = (props) => {
       commentId={commentId}
       quickActions={
         <>
-          {currentUser?.id === comment.actor && (
-            <CustomMenu ellipsis>
+          {!disabled && currentUser?.id === comment.actor && (
+            <CustomMenu ellipsis closeOnSelect>
               <CustomMenu.MenuItem onClick={() => setIsEditing(true)} className="flex items-center gap-1">
                 <Pencil className="h-3 w-3" />
                 Edit comment
@@ -83,7 +100,9 @@ export const IssueCommentCard: FC<TIssueCommentCard> = (props) => {
                 <>
                   {comment.access === "INTERNAL" ? (
                     <CustomMenu.MenuItem
-                      onClick={() => activityOperations.updateComment(comment.id, { access: "EXTERNAL" })}
+                      onClick={() =>
+                        activityOperations.updateComment(comment.id, { access: EIssueCommentAccessSpecifier.EXTERNAL })
+                      }
                       className="flex items-center gap-1"
                     >
                       <Globe2 className="h-3 w-3" />
@@ -91,7 +110,9 @@ export const IssueCommentCard: FC<TIssueCommentCard> = (props) => {
                     </CustomMenu.MenuItem>
                   ) : (
                     <CustomMenu.MenuItem
-                      onClick={() => activityOperations.updateComment(comment.id, { access: "INTERNAL" })}
+                      onClick={() =>
+                        activityOperations.updateComment(comment.id, { access: EIssueCommentAccessSpecifier.INTERNAL })
+                      }
                       className="flex items-center gap-1"
                     >
                       <Lock className="h-3 w-3" />
@@ -115,30 +136,34 @@ export const IssueCommentCard: FC<TIssueCommentCard> = (props) => {
     >
       <>
         <form className={`flex-col gap-2 ${isEditing ? "flex" : "hidden"}`}>
-          <div>
-            <LiteTextEditorWithRef
-              onEnterKeyPress={handleSubmit(onEnter)}
-              cancelUploadImage={fileService.cancelUpload}
-              uploadFile={fileService.getUploadFileFunction(comment?.workspace_detail?.slug as string)}
-              deleteFile={fileService.getDeleteImageFunction(workspaceId)}
-              restoreFile={fileService.getRestoreImageFunction(workspaceId)}
+          <div
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !isEmpty) handleSubmit(onEnter)(e);
+            }}
+          >
+            <LiteTextEditor
+              workspaceId={workspaceId}
+              projectId={projectId}
+              workspaceSlug={workspaceSlug}
               ref={editorRef}
-              value={watch("comment_html") ?? ""}
-              debouncedUpdatesEnabled={false}
-              customClassName="min-h-[50px] p-3 shadow-sm"
-              onChange={(comment_json: Object, comment_html: string) => setValue("comment_html", comment_html)}
-              mentionSuggestions={mentionSuggestions}
-              mentionHighlights={mentionHighlights}
+              initialValue={watch("comment_html") ?? ""}
+              value={null}
+              onChange={(comment_json, comment_html) => setValue("comment_html", comment_html)}
+              showSubmitButton={false}
             />
           </div>
           <div className="flex gap-1 self-end">
             <button
               type="button"
               onClick={handleSubmit(onEnter)}
-              disabled={isSubmitting}
-              className="group rounded border border-green-500 bg-green-500/20 p-2 shadow-md duration-300 hover:bg-green-500"
+              disabled={isSubmitting || isEmpty}
+              className={`group rounded border border-green-500 bg-green-500/20 p-2 shadow-md duration-300  ${
+                isEmpty ? "cursor-not-allowed bg-gray-200" : "hover:bg-green-500"
+              }`}
             >
-              <Check className="h-3 w-3 text-green-500 duration-300 group-hover:text-white" />
+              <Check
+                className={`h-3 w-3 text-green-500 duration-300 ${isEmpty ? "text-black" : "group-hover:text-white"}`}
+              />
             </button>
             <button
               type="button"
@@ -152,24 +177,24 @@ export const IssueCommentCard: FC<TIssueCommentCard> = (props) => {
         <div className={`relative ${isEditing ? "hidden" : ""}`}>
           {showAccessSpecifier && (
             <div className="absolute right-2.5 top-2.5 z-[1] text-custom-text-300">
-              {comment.access === "INTERNAL" ? <Lock className="h-3 w-3" /> : <Globe2 className="h-3 w-3" />}
+              {comment.access === EIssueCommentAccessSpecifier.INTERNAL ? (
+                <Lock className="h-3 w-3" />
+              ) : (
+                <Globe2 className="h-3 w-3" />
+              )}
             </div>
           )}
-          <LiteReadOnlyEditorWithRef
-            ref={showEditorRef}
-            value={comment.comment_html ?? ""}
-            customClassName="text-xs border border-custom-border-200 bg-custom-background-100"
-            mentionHighlights={mentionHighlights}
-          />
+          <LiteTextReadOnlyEditor ref={showEditorRef} initialValue={comment.comment_html ?? ""} />
 
           <IssueCommentReaction
             workspaceSlug={workspaceSlug}
             projectId={comment?.project_detail?.id}
             commentId={comment.id}
             currentUser={currentUser}
+            disabled={disabled}
           />
         </div>
       </>
     </IssueCommentBlock>
   );
-};
+});

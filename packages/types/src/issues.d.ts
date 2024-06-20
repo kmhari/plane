@@ -58,7 +58,6 @@ export interface IIssueLink {
 export interface ILinkDetails {
   created_at: Date;
   created_by: string;
-  created_by_detail: IUserLite;
   id: string;
   metadata: any;
   title: string;
@@ -204,6 +203,8 @@ export interface ViewFlags {
 
 export type GroupByColumnTypes =
   | "project"
+  | "cycle"
+  | "module"
   | "state"
   | "state_detail.group"
   | "priority"
@@ -216,8 +217,19 @@ export interface IGroupByColumn {
   name: string;
   icon: ReactElement | undefined;
   payload: Partial<TIssue>;
+  isDropDisabled?: boolean;
+  dropErrorMessage?: string;
 }
 
 export interface IIssueMap {
   [key: string]: TIssue;
+}
+
+export interface IIssueListRow {
+  id: string;
+  groupId: string;
+  type: "HEADER" | "NO_ISSUES" | "QUICK_ADD" | "ISSUE";
+  name?: string;
+  icon?: ReactElement | undefined;
+  payload?: Partial<TIssue>;
 }

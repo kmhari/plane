@@ -1,41 +1,44 @@
 import { useRef, useState } from "react";
-import { observer } from "mobx-react-lite";
+import { observer } from "mobx-react";
 import { ChevronUp, PenSquare, Search } from "lucide-react";
-// hooks
-import { useApplication, useUser } from "hooks/store";
-import useLocalStorage from "hooks/use-local-storage";
+// types
+import { TIssue } from "@plane/types";
 // components
-import { CreateUpdateDraftIssueModal } from "components/issues";
+import { CreateUpdateIssueModal } from "@/components/issues";
 // constants
-import { EUserWorkspaceRoles } from "constants/workspace";
-import { EIssuesStoreType } from "constants/issue";
+import { EIssuesStoreType } from "@/constants/issue";
+import { EUserWorkspaceRoles } from "@/constants/workspace";
+// hooks
+import { useAppRouter, useAppTheme, useCommandPalette, useEventTracker, useProject, useUser } from "@/hooks/store";
+import useLocalStorage from "@/hooks/use-local-storage";
 
 export const WorkspaceSidebarQuickAction = observer(() => {
   // states
   const [isDraftIssueModalOpen, setIsDraftIssueModalOpen] = useState(false);
-
-  const {
-    theme: themeStore,
-    commandPalette: commandPaletteStore,
-    eventTracker: { setTrackElement },
-  } = useApplication();
+  // store hooks
+  const { toggleCreateIssueModal, toggleCommandPaletteModal } = useCommandPalette();
+  const { sidebarCollapsed: isSidebarCollapsed } = useAppTheme();
+  const { workspaceSlug } = useAppRouter();
+  const { setTrackElement } = useEventTracker();
+  const { joinedProjectIds } = useProject();
   const {
     membership: { currentWorkspaceRole },
   } = useUser();
 
-  const { storedValue, clearValue } = useLocalStorage<any>("draftedIssue", JSON.stringify({}));
+  const { storedValue, setValue } = useLocalStorage<Record<string, Partial<TIssue>>>("draftedIssue", {});
 
   //useState control for displaying draft issue button instead of group hover
   const [isDraftButtonOpen, setIsDraftButtonOpen] = useState(false);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const timeoutRef = useRef<any>();
-
-  const isSidebarCollapsed = themeStore.sidebarCollapsed;
 
   const isAuthorizedUser = !!currentWorkspaceRole && currentWorkspaceRole >= EUserWorkspaceRoles.MEMBER;
 
+  const disabled = joinedProjectIds.length === 0;
+
   const onMouseEnter = () => {
-    //if renet before timout clear the timeout
+    // if enter before time out clear the timeout
     timeoutRef?.current && clearTimeout(timeoutRef.current);
     setIsDraftButtonOpen(true);
   };
@@ -45,24 +48,30 @@ export const WorkspaceSidebarQuickAction = observer(() => {
       setIsDraftButtonOpen(false);
     }, 300);
   };
+
+  const workspaceDraftIssue = workspaceSlug ? storedValue?.[workspaceSlug] ?? undefined : undefined;
+
+  const removeWorkspaceDraftIssue = () => {
+    const draftIssues = storedValue ?? {};
+    if (workspaceSlug && draftIssues[workspaceSlug]) delete draftIssues[workspaceSlug];
+    setValue(draftIssues);
+    return Promise.resolve();
+  };
+
   return (
     <>
-      <CreateUpdateDraftIssueModal
+      <CreateUpdateIssueModal
         isOpen={isDraftIssueModalOpen}
-        handleClose={() => setIsDraftIssueModalOpen(false)}
-        prePopulateData={storedValue ? JSON.parse(storedValue) : {}}
-        onSubmit={() => {
-          localStorage.removeItem("draftedIssue");
-          clearValue();
-        }}
-        fieldsToShow={["all"]}
+        onClose={() => setIsDraftIssueModalOpen(false)}
+        data={workspaceDraftIssue ?? {}}
+        onSubmit={() => removeWorkspaceDraftIssue()}
+        isDraft
       />
+
       <div
         className={`mt-4 flex w-full cursor-pointer items-center justify-between px-4 ${
           isSidebarCollapsed ? "flex-col gap-1" : "gap-2"
         }`}
-        onMouseEnter={onMouseEnter}
-        onMouseLeave={onMouseLeave}
       >
         {isAuthorizedUser && (
           <div
@@ -71,22 +80,25 @@ export const WorkspaceSidebarQuickAction = observer(() => {
                 ? "px-2 hover:bg-custom-sidebar-background-80"
                 : "border-[0.5px] border-custom-border-200 px-3 shadow-custom-sidebar-shadow-2xs"
             }`}
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
           >
             <button
               type="button"
               className={`relative flex flex-shrink-0 flex-grow items-center gap-2 rounded py-1.5 outline-none ${
                 isSidebarCollapsed ? "justify-center" : ""
-              }`}
+              } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
               onClick={() => {
                 setTrackElement("APP_SIDEBAR_QUICK_ACTIONS");
-                commandPaletteStore.toggleCreateIssueModal(true, EIssuesStoreType.PROJECT);
+                toggleCreateIssueModal(true, EIssuesStoreType.PROJECT);
               }}
+              disabled={disabled}
             >
               <PenSquare className="h-4 w-4 text-custom-sidebar-text-300" />
               {!isSidebarCollapsed && <span className="text-sm font-medium">New Issue</span>}
             </button>
 
-            {storedValue && Object.keys(JSON.parse(storedValue)).length > 0 && (
+            {!disabled && workspaceDraftIssue && (
               <>
                 <div
                   className={`h-8 w-0.5 bg-custom-sidebar-background-80 ${isSidebarCollapsed ? "hidden" : "block"}`}
@@ -126,14 +138,14 @@ export const WorkspaceSidebarQuickAction = observer(() => {
         )}
 
         <button
-          className={`flex flex-shrink-0 items-center rounded p-2 gap-2 outline-none ${
+          className={`flex flex-shrink-0 items-center gap-2 rounded p-2 outline-none ${
             isAuthorizedUser ? "justify-center" : "w-full"
           } ${
             isSidebarCollapsed
               ? "hover:bg-custom-sidebar-background-80"
               : "border-[0.5px] border-custom-border-200 shadow-custom-sidebar-shadow-2xs"
           }`}
-          onClick={() => commandPaletteStore.toggleCommandPaletteModal(true)}
+          onClick={() => toggleCommandPaletteModal(true)}
         >
           <Search className="h-4 w-4 text-custom-sidebar-text-300" />
           {!isAuthorizedUser && !isSidebarCollapsed && <span className="text-xs font-medium">Open command menu</span>}

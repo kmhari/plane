@@ -1,12 +1,16 @@
-import { action, observable, makeObservable, computed, runInAction } from "mobx";
+import concat from "lodash/concat";
+import pull from "lodash/pull";
 import set from "lodash/set";
+import uniq from "lodash/uniq";
+import update from "lodash/update";
+import { action, observable, makeObservable, computed, runInAction } from "mobx";
 // base class
-import { IssueHelperStore } from "../helpers/issue-helper.store";
 // services
-import { IssueDraftService } from "services/issue/issue_draft.service";
+import { IssueDraftService } from "@/services/issue/issue_draft.service";
 // types
-import { IIssueRootStore } from "../root.store";
 import { TIssue, TLoader, TGroupedIssues, TSubGroupedIssues, TUnGroupedIssues, ViewFlags } from "@plane/types";
+import { IssueHelperStore } from "../helpers/issue-helper.store";
+import { IIssueRootStore } from "../root.store";
 
 export interface IDraftIssues {
   // observable
@@ -16,10 +20,11 @@ export interface IDraftIssues {
   // computed
   groupedIssueIds: TGroupedIssues | TSubGroupedIssues | TUnGroupedIssues | undefined;
   // actions
+  getIssueIds: (groupId?: string, subGroupId?: string) => string[] | undefined;
   fetchIssues: (workspaceSlug: string, projectId: string, loadType: TLoader) => Promise<TIssue[]>;
   createIssue: (workspaceSlug: string, projectId: string, data: Partial<TIssue>) => Promise<TIssue>;
-  updateIssue: (workspaceSlug: string, projectId: string, issueId: string, data: Partial<TIssue>) => Promise<TIssue>;
-  removeIssue: (workspaceSlug: string, projectId: string, issueId: string) => Promise<TIssue>;
+  updateIssue: (workspaceSlug: string, projectId: string, issueId: string, data: Partial<TIssue>) => Promise<void>;
+  removeIssue: (workspaceSlug: string, projectId: string, issueId: string) => Promise<void>;
   quickAddIssue: undefined;
 }
 
@@ -29,7 +34,7 @@ export class DraftIssues extends IssueHelperStore implements IDraftIssues {
   viewFlags = {
     enableQuickAdd: false,
     enableIssueCreation: true,
-    enableInlineEditing: false,
+    enableInlineEditing: true,
   };
   // root store
   rootIssueStore: IIssueRootStore;
@@ -74,10 +79,11 @@ export class DraftIssues extends IssueHelperStore implements IDraftIssues {
     const orderBy = displayFilters?.order_by;
     const layout = displayFilters?.layout;
 
-    const draftIssueIds = this.issues[projectId] ?? [];
+    const draftIssueIds = this.issues[projectId];
+    if (!draftIssueIds) return undefined;
 
-    const _issues = this.rootIssueStore.issues.getIssuesByIds(draftIssueIds);
-    if (!_issues) return undefined;
+    const _issues = this.rootIssueStore.issues.getIssuesByIds(draftIssueIds, "un-archived");
+    if (!_issues) return [];
 
     let issues: TGroupedIssues | TSubGroupedIssues | TUnGroupedIssues | undefined = undefined;
 
@@ -91,6 +97,30 @@ export class DraftIssues extends IssueHelperStore implements IDraftIssues {
 
     return issues;
   }
+
+  getIssueIds = (groupId?: string, subGroupId?: string) => {
+    const groupedIssueIds = this.groupedIssueIds;
+
+    const displayFilters = this.rootIssueStore?.draftIssuesFilter?.issueFilters?.displayFilters;
+    if (!displayFilters || !groupedIssueIds) return undefined;
+
+    const subGroupBy = displayFilters?.sub_group_by;
+    const groupBy = displayFilters?.group_by;
+
+    if (!groupBy && !subGroupBy) {
+      return groupedIssueIds as string[];
+    }
+
+    if (groupBy && subGroupBy && groupId && subGroupId) {
+      return (groupedIssueIds as TSubGroupedIssues)?.[subGroupId]?.[groupId] as string[];
+    }
+
+    if (groupBy && groupId) {
+      return (groupedIssueIds as TGroupedIssues)?.[groupId] as string[];
+    }
+
+    return undefined;
+  };
 
   fetchIssues = async (workspaceSlug: string, projectId: string, loadType: TLoader = "init-loader") => {
     try {
@@ -123,7 +153,7 @@ export class DraftIssues extends IssueHelperStore implements IDraftIssues {
       const response = await this.issueDraftService.createDraftIssue(workspaceSlug, projectId, data);
 
       runInAction(() => {
-        this.issues[projectId].push(response.id);
+        update(this.issues, [projectId], (issueIds = []) => uniq(concat(issueIds, response.id)));
       });
 
       this.rootStore.issues.addIssue([response]);
@@ -137,8 +167,17 @@ export class DraftIssues extends IssueHelperStore implements IDraftIssues {
   updateIssue = async (workspaceSlug: string, projectId: string, issueId: string, data: Partial<TIssue>) => {
     try {
       this.rootStore.issues.updateIssue(issueId, data);
-      const response = await this.issueDraftService.updateDraftIssue(workspaceSlug, projectId, issueId, data);
-      return response;
+
+      if (data.hasOwnProperty("is_draft") && data?.is_draft === false) {
+        runInAction(() => {
+          update(this.issues, [projectId], (issueIds = []) => {
+            if (issueIds.includes(issueId)) pull(issueIds, issueId);
+            return issueIds;
+          });
+        });
+      }
+
+      await this.issueDraftService.updateDraftIssue(workspaceSlug, projectId, issueId, data);
     } catch (error) {
       this.fetchIssues(workspaceSlug, projectId, "mutation");
       throw error;
@@ -147,17 +186,14 @@ export class DraftIssues extends IssueHelperStore implements IDraftIssues {
 
   removeIssue = async (workspaceSlug: string, projectId: string, issueId: string) => {
     try {
-      const response = await this.issueDraftService.deleteDraftIssue(workspaceSlug, projectId, issueId);
+      await this.rootIssueStore.projectIssues.removeIssue(workspaceSlug, projectId, issueId);
 
-      const issueIndex = this.issues[projectId].findIndex((_issueId) => _issueId === issueId);
-      if (issueIndex >= 0)
-        runInAction(() => {
-          this.issues[projectId].splice(issueIndex, 1);
+      runInAction(() => {
+        update(this.issues, [projectId], (issueIds = []) => {
+          if (issueIds.includes(issueId)) pull(issueIds, issueId);
+          return issueIds;
         });
-
-      this.rootStore.issues.removeIssue(issueId);
-
-      return response;
+      });
     } catch (error) {
       throw error;
     }

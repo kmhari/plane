@@ -1,70 +1,53 @@
-import { FC, useCallback, useState } from "react";
-import { DragDropContext, DragStart, DraggableLocation, DropResult, Droppable } from "@hello-pangea/dnd";
-import { useRouter } from "next/router";
+import { FC, useCallback, useEffect, useRef, useState } from "react";
+import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
+import { dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { autoScrollForElements } from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element";
 import { observer } from "mobx-react-lite";
-// hooks
-import { useUser } from "hooks/store";
-import useToast from "hooks/use-toast";
-// ui
+import { useRouter } from "next/router";
 import { Spinner } from "@plane/ui";
+import { DeleteIssueModal } from "@/components/issues";
+import { ISSUE_DELETED } from "@/constants/event-tracker";
+import { EIssueFilterType, EIssuesStoreType } from "@/constants/issue";
+import { EUserProjectRoles } from "@/constants/project";
+// hooks
+import { useEventTracker, useIssueDetail, useIssues, useKanbanView, useUser } from "@/hooks/store";
+import { useGroupIssuesDragNDrop } from "@/hooks/use-group-dragndrop";
+import { useIssuesActions } from "@/hooks/use-issues-actions";
+// store
+// ui
 // types
-import { TIssue } from "@plane/types";
-import { EIssueActions } from "../types";
-import { IQuickActionProps } from "../list/list-view-types";
-import { IProjectIssues, IProjectIssuesFilter } from "store/issue/project";
+import { IQuickActionProps, TRenderQuickActions } from "../list/list-view-types";
 //components
+import { getSourceFromDropPayload } from "../utils";
 import { KanBan } from "./default";
 import { KanBanSwimLanes } from "./swimlanes";
-import { DeleteIssueModal } from "components/issues";
-import { EUserProjectRoles } from "constants/project";
-import { useIssues } from "hooks/store/use-issues";
-import { handleDragDrop } from "./utils";
-import { ICycleIssues, ICycleIssuesFilter } from "store/issue/cycle";
-import { IDraftIssues, IDraftIssuesFilter } from "store/issue/draft";
-import { IProfileIssues, IProfileIssuesFilter } from "store/issue/profile";
-import { IModuleIssues, IModuleIssuesFilter } from "store/issue/module";
-import { IProjectViewIssues, IProjectViewIssuesFilter } from "store/issue/project-views";
-import { EIssueFilterType, TCreateModalStoreTypes } from "constants/issue";
 
+export type KanbanStoreType =
+  | EIssuesStoreType.PROJECT
+  | EIssuesStoreType.MODULE
+  | EIssuesStoreType.CYCLE
+  | EIssuesStoreType.PROJECT_VIEW
+  | EIssuesStoreType.DRAFT
+  | EIssuesStoreType.PROFILE;
 export interface IBaseKanBanLayout {
-  issues: IProjectIssues | ICycleIssues | IDraftIssues | IModuleIssues | IProjectViewIssues | IProfileIssues;
-  issuesFilter:
-    | IProjectIssuesFilter
-    | IModuleIssuesFilter
-    | ICycleIssuesFilter
-    | IDraftIssuesFilter
-    | IProjectViewIssuesFilter
-    | IProfileIssuesFilter;
   QuickActions: FC<IQuickActionProps>;
-  issueActions: {
-    [EIssueActions.DELETE]: (issue: TIssue) => Promise<void>;
-    [EIssueActions.UPDATE]?: (issue: TIssue) => Promise<void>;
-    [EIssueActions.REMOVE]?: (issue: TIssue) => Promise<void>;
-  };
   showLoader?: boolean;
   viewId?: string;
-  storeType?: TCreateModalStoreTypes;
+  storeType: KanbanStoreType;
   addIssuesToView?: (issueIds: string[]) => Promise<any>;
   canEditPropertiesBasedOnProject?: (projectId: string) => boolean;
+  isCompletedCycle?: boolean;
 }
-
-type KanbanDragState = {
-  draggedIssueId?: string | null;
-  source?: DraggableLocation | null;
-  destination?: DraggableLocation | null;
-};
 
 export const BaseKanBanRoot: React.FC<IBaseKanBanLayout> = observer((props: IBaseKanBanLayout) => {
   const {
-    issues,
-    issuesFilter,
     QuickActions,
-    issueActions,
     showLoader,
     viewId,
     storeType,
     addIssuesToView,
     canEditPropertiesBasedOnProject,
+    isCompletedCycle = false,
   } = props;
   // router
   const router = useRouter();
@@ -73,17 +56,28 @@ export const BaseKanBanRoot: React.FC<IBaseKanBanLayout> = observer((props: IBas
   const {
     membership: { currentProjectRole },
   } = useUser();
-  const { issueMap } = useIssues();
-  // toast alert
-  const { setToastAlert } = useToast();
+  const { captureIssueEvent } = useEventTracker();
+  const { issueMap, issuesFilter, issues } = useIssues(storeType);
+  const {
+    issue: { getIssueById },
+  } = useIssueDetail();
+  const { updateIssue, removeIssue, removeIssueFromView, archiveIssue, restoreIssue, updateFilters } =
+    useIssuesActions(storeType);
+
+  const deleteAreaRef = useRef<HTMLDivElement | null>(null);
+  const [isDragOverDelete, setIsDragOverDelete] = useState(false);
+
+  const { isDragging } = useKanbanView();
 
   const issueIds = issues?.groupedIssueIds || [];
 
   const displayFilters = issuesFilter?.issueFilters?.displayFilters;
   const displayProperties = issuesFilter?.issueFilters?.displayProperties;
 
-  const sub_group_by: string | null = displayFilters?.sub_group_by || null;
-  const group_by: string | null = displayFilters?.group_by || null;
+  const sub_group_by = displayFilters?.sub_group_by;
+  const group_by = displayFilters?.group_by;
+
+  const orderBy = displayFilters?.order_by;
 
   const userDisplayFilters = displayFilters || null;
 
@@ -91,12 +85,15 @@ export const BaseKanBanRoot: React.FC<IBaseKanBanLayout> = observer((props: IBas
 
   const { enableInlineEditing, enableQuickAdd, enableIssueCreation } = issues?.viewFlags || {};
 
+  const scrollableContainerRef = useRef<HTMLDivElement | null>(null);
+
   // states
-  const [isDragStarted, setIsDragStarted] = useState<boolean>(false);
-  const [dragState, setDragState] = useState<KanbanDragState>({});
+  const [draggedIssueId, setDraggedIssueId] = useState<string | undefined>(undefined);
   const [deleteIssueModal, setDeleteIssueModal] = useState(false);
 
   const isEditingAllowed = !!currentProjectRole && currentProjectRole >= EUserProjectRoles.MEMBER;
+
+  const handleOnDrop = useGroupIssuesDragNDrop(storeType, orderBy, group_by, sub_group_by);
 
   const canEditProperties = useCallback(
     (projectId: string | undefined) => {
@@ -108,113 +105,92 @@ export const BaseKanBanRoot: React.FC<IBaseKanBanLayout> = observer((props: IBas
     [canEditPropertiesBasedOnProject, enableInlineEditing, isEditingAllowed]
   );
 
-  const onDragStart = (dragStart: DragStart) => {
-    setDragState({
-      draggedIssueId: dragStart.draggableId.split("__")[0],
-    });
-    setIsDragStarted(true);
-  };
+  // Enable Auto Scroll for Main Kanban
+  useEffect(() => {
+    const element = scrollableContainerRef.current;
 
-  const onDragEnd = async (result: DropResult) => {
-    setIsDragStarted(false);
+    if (!element) return;
 
-    if (!result) return;
+    return combine(
+      autoScrollForElements({
+        element,
+      })
+    );
+  }, [scrollableContainerRef?.current]);
 
-    if (
-      result.destination &&
-      result.source &&
-      result.source.droppableId &&
-      result.destination.droppableId &&
-      result.destination.droppableId === result.source.droppableId &&
-      result.destination.index === result.source.index
-    )
-      return;
+  // Make the Issue Delete Box a Drop Target
+  useEffect(() => {
+    const element = deleteAreaRef.current;
 
-    if (handleDragDrop) {
-      if (result.destination?.droppableId && result.destination?.droppableId.split("__")[0] === "issue-trash-box") {
-        setDragState({
-          ...dragState,
-          source: result.source,
-          destination: result.destination,
-        });
-        setDeleteIssueModal(true);
-      } else {
-        await handleDragDrop(
-          result.source,
-          result.destination,
-          workspaceSlug?.toString(),
-          projectId?.toString(),
-          issues,
-          sub_group_by,
-          group_by,
-          issueMap,
-          issueIds,
-          viewId
-        ).catch((err) => {
-          setToastAlert({
-            title: "Error",
-            type: "error",
-            message: err.detail ?? "Failed to perform this action",
-          });
-        });
-      }
-    }
-  };
+    if (!element) return;
 
-  const handleIssues = useCallback(
-    async (issue: TIssue, action: EIssueActions) => {
-      if (issueActions[action]) {
-        await issueActions[action]!(issue);
-      }
-    },
-    [issueActions]
-  );
+    return combine(
+      dropTargetForElements({
+        element,
+        getData: () => ({ columnId: "issue-trash-box", groupId: "issue-trash-box", type: "DELETE" }),
+        onDragEnter: () => {
+          setIsDragOverDelete(true);
+        },
+        onDragLeave: () => {
+          setIsDragOverDelete(false);
+        },
+        onDrop: (payload) => {
+          setIsDragOverDelete(false);
+          const source = getSourceFromDropPayload(payload);
 
-  const renderQuickActions = useCallback(
-    (issue: TIssue, customActionButton?: React.ReactElement) => (
+          if (!source) return;
+
+          setDraggedIssueId(source.id);
+          setDeleteIssueModal(true);
+        },
+      })
+    );
+  }, [deleteAreaRef?.current, setIsDragOverDelete, setDraggedIssueId, setDeleteIssueModal]);
+
+  const renderQuickActions: TRenderQuickActions = useCallback(
+    ({ issue, parentRef, customActionButton }) => (
       <QuickActions
+        parentRef={parentRef}
         customActionButton={customActionButton}
         issue={issue}
-        handleDelete={async () => handleIssues(issue, EIssueActions.DELETE)}
-        handleUpdate={
-          issueActions[EIssueActions.UPDATE] ? async (data) => handleIssues(data, EIssueActions.UPDATE) : undefined
-        }
-        handleRemoveFromView={
-          issueActions[EIssueActions.REMOVE] ? async () => handleIssues(issue, EIssueActions.REMOVE) : undefined
-        }
+        handleDelete={async () => removeIssue(issue.project_id, issue.id)}
+        handleUpdate={async (data) => updateIssue && updateIssue(issue.project_id, issue.id, data)}
+        handleRemoveFromView={async () => removeIssueFromView && removeIssueFromView(issue.project_id, issue.id)}
+        handleArchive={async () => archiveIssue && archiveIssue(issue.project_id, issue.id)}
+        handleRestore={async () => restoreIssue && restoreIssue(issue.project_id, issue.id)}
+        readOnly={!isEditingAllowed || isCompletedCycle}
       />
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [issueActions, handleIssues]
+    [isEditingAllowed, isCompletedCycle, removeIssue, updateIssue, removeIssueFromView, archiveIssue, restoreIssue]
   );
 
   const handleDeleteIssue = async () => {
-    if (!handleDragDrop) return;
-    await handleDragDrop(
-      dragState.source,
-      dragState.destination,
-      workspaceSlug?.toString(),
-      projectId?.toString(),
-      issues,
-      sub_group_by,
-      group_by,
-      issueMap,
-      issueIds,
-      viewId
-    ).finally(() => {
-      handleIssues(issueMap[dragState.draggedIssueId!], EIssueActions.DELETE);
+    const draggedIssue = getIssueById(draggedIssueId ?? "");
+
+    if (!draggedIssueId || !draggedIssue) return;
+
+    await removeIssue(draggedIssue.project_id, draggedIssueId).finally(() => {
       setDeleteIssueModal(false);
-      setDragState({});
+      setDraggedIssueId(undefined);
+      captureIssueEvent({
+        eventName: ISSUE_DELETED,
+        payload: { id: draggedIssueId, state: "FAILED", element: "Kanban layout drag & drop" },
+        path: router.asPath,
+      });
     });
   };
 
   const handleKanbanFilters = (toggle: "group_by" | "sub_group_by", value: string) => {
-    if (workspaceSlug && projectId) {
-      let _kanbanFilters = issuesFilter?.issueFilters?.kanbanFilters?.[toggle] || [];
-      if (_kanbanFilters.includes(value)) _kanbanFilters = _kanbanFilters.filter((_value) => _value != value);
-      else _kanbanFilters.push(value);
-      issuesFilter.updateFilters(workspaceSlug.toString(), projectId.toString(), EIssueFilterType.KANBAN_FILTERS, {
-        [toggle]: _kanbanFilters,
+    if (workspaceSlug) {
+      let kanbanFilters = issuesFilter?.issueFilters?.kanbanFilters?.[toggle] || [];
+      if (kanbanFilters.includes(value)) {
+        kanbanFilters = kanbanFilters.filter((_value) => _value != value);
+      } else {
+        kanbanFilters.push(value);
+      }
+      updateFilters(projectId?.toString() ?? "", EIssueFilterType.KANBAN_FILTERS, {
+        [toggle]: kanbanFilters,
       });
     }
   };
@@ -224,7 +200,7 @@ export const BaseKanBanRoot: React.FC<IBaseKanBanLayout> = observer((props: IBas
   return (
     <>
       <DeleteIssueModal
-        dataId={dragState.draggedIssueId}
+        dataId={draggedIssueId}
         isOpen={deleteIssueModal}
         handleClose={() => setDeleteIssueModal(false)}
         onSubmit={handleDeleteIssue}
@@ -236,52 +212,53 @@ export const BaseKanBanRoot: React.FC<IBaseKanBanLayout> = observer((props: IBas
         </div>
       )}
 
-      <div className="horizontal-scroll-enable relative h-full w-full overflow-auto bg-custom-background-90">
-        <div className="relative h-full w-max min-w-full bg-custom-background-90 px-2">
-          <DragDropContext onDragStart={onDragStart} onDragEnd={onDragEnd}>
-            {/* drag and delete component */}
+      <div
+        className={`horizontal-scrollbar scrollbar-lg relative flex h-full w-full bg-custom-background-90 ${sub_group_by ? "vertical-scrollbar overflow-y-auto" : "overflow-x-auto overflow-y-hidden"}`}
+        ref={scrollableContainerRef}
+      >
+        <div className="relative h-full w-max min-w-full bg-custom-background-90">
+          {/* drag and delete component */}
+          <div
+            className={`fixed left-1/2 -translate-x-1/2 ${
+              isDragging ? "z-40" : ""
+            } top-3 mx-3 flex w-72 items-center justify-center`}
+            ref={deleteAreaRef}
+          >
             <div
-              className={`fixed left-1/2 -translate-x-1/2 ${
-                isDragStarted ? "z-40" : ""
-              } top-3 mx-3 flex w-72 items-center justify-center`}
+              className={`${
+                isDragging ? `opacity-100` : `opacity-0`
+              } flex w-full items-center justify-center rounded border-2 border-red-500/20 bg-custom-background-100 px-3 py-5 text-xs font-medium italic text-red-500 ${
+                isDragOverDelete ? "bg-red-500 opacity-70 blur-2xl" : ""
+              } transition duration-300`}
             >
-              <Droppable droppableId="issue-trash-box" isDropDisabled={!isDragStarted}>
-                {(provided, snapshot) => (
-                  <div
-                    className={`${
-                      isDragStarted ? `opacity-100` : `opacity-0`
-                    } flex w-full items-center justify-center rounded border-2 border-red-500/20 bg-custom-background-100 px-3 py-5 text-xs font-medium italic text-red-500 ${
-                      snapshot.isDraggingOver ? "bg-red-500 opacity-70 blur-2xl" : ""
-                    } transition duration-300`}
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                  >
-                    Drop here to delete the issue.
-                  </div>
-                )}
-              </Droppable>
+              Drop here to delete the issue.
             </div>
+          </div>
 
+          <div className="h-full w-max">
             <KanBanView
               issuesMap={issueMap}
               issueIds={issueIds}
               displayProperties={displayProperties}
               sub_group_by={sub_group_by}
               group_by={group_by}
-              handleIssues={handleIssues}
+              orderBy={orderBy}
+              updateIssue={updateIssue}
               quickActions={renderQuickActions}
               handleKanbanFilters={handleKanbanFilters}
               kanbanFilters={kanbanFilters}
               enableQuickIssueCreate={enableQuickAdd}
-              showEmptyGroup={userDisplayFilters?.show_empty_groups || true}
+              showEmptyGroup={userDisplayFilters?.show_empty_groups ?? true}
               quickAddCallback={issues?.quickAddIssue}
               viewId={viewId}
-              disableIssueCreation={!enableIssueCreation || !isEditingAllowed}
+              disableIssueCreation={!enableIssueCreation || !isEditingAllowed || isCompletedCycle}
               canEditProperties={canEditProperties}
               storeType={storeType}
               addIssuesToView={addIssuesToView}
+              scrollableContainerRef={scrollableContainerRef}
+              handleOnDrop={handleOnDrop}
             />
-          </DragDropContext>
+          </div>
         </div>
       </div>
     </>

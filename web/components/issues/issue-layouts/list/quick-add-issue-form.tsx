@@ -1,17 +1,20 @@
 import { FC, useEffect, useState, useRef } from "react";
+import { observer } from "mobx-react";
 import { useRouter } from "next/router";
 import { useForm } from "react-hook-form";
 import { PlusIcon } from "lucide-react";
-import { observer } from "mobx-react-lite";
-// hooks
-import { useProject } from "hooks/store";
-import useToast from "hooks/use-toast";
-import useKeypress from "hooks/use-keypress";
-import useOutsideClickDetector from "hooks/use-outside-click-detector";
-// constants
 import { TIssue, IProject } from "@plane/types";
+// hooks
+import { setPromiseToast } from "@plane/ui";
+import { ISSUE_CREATED } from "@/constants/event-tracker";
+import { createIssuePayload } from "@/helpers/issue.helper";
+import { useEventTracker, useProject } from "@/hooks/store";
+import useKeypress from "@/hooks/use-keypress";
+import useOutsideClickDetector from "@/hooks/use-outside-click-detector";
+// ui
 // types
-import { createIssuePayload } from "helpers/issue.helper";
+// helper
+// constants
 
 interface IInputProps {
   formKey: string;
@@ -64,6 +67,7 @@ export const ListQuickAddIssueForm: FC<IListQuickAddIssueForm> = observer((props
   const { workspaceSlug, projectId } = router.query;
   // hooks
   const { getProjectById } = useProject();
+  const { captureIssueEvent } = useEventTracker();
 
   const projectDetail = (projectId && getProjectById(projectId.toString())) || undefined;
 
@@ -74,7 +78,6 @@ export const ListQuickAddIssueForm: FC<IListQuickAddIssueForm> = observer((props
 
   useKeypress("Escape", handleClose);
   useOutsideClickDetector(ref, handleClose);
-  const { setToastAlert } = useToast();
 
   const {
     reset,
@@ -98,20 +101,35 @@ export const ListQuickAddIssueForm: FC<IListQuickAddIssueForm> = observer((props
       ...formData,
     });
 
-    try {
-      quickAddCallback &&
-        (await quickAddCallback(workspaceSlug.toString(), projectId.toString(), { ...payload }, viewId));
-      setToastAlert({
-        type: "success",
-        title: "Success!",
-        message: "Issue created successfully.",
+    if (quickAddCallback) {
+      const quickAddPromise = quickAddCallback(workspaceSlug.toString(), projectId.toString(), { ...payload }, viewId);
+      setPromiseToast<any>(quickAddPromise, {
+        loading: "Adding issue...",
+        success: {
+          title: "Success!",
+          message: () => "Issue created successfully.",
+        },
+        error: {
+          title: "Error!",
+          message: (err) => err?.message || "Some error occurred. Please try again.",
+        },
       });
-    } catch (err: any) {
-      setToastAlert({
-        type: "error",
-        title: "Error!",
-        message: err?.message || "Some error occurred. Please try again.",
-      });
+
+      await quickAddPromise
+        .then((res) => {
+          captureIssueEvent({
+            eventName: ISSUE_CREATED,
+            payload: { ...res, state: "SUCCESS", element: "List quick add" },
+            path: router.asPath,
+          });
+        })
+        .catch(() => {
+          captureIssueEvent({
+            eventName: ISSUE_CREATED,
+            payload: { ...payload, state: "FAILED", element: "List quick add" },
+            path: router.asPath,
+          });
+        });
     }
   };
 
@@ -134,11 +152,11 @@ export const ListQuickAddIssueForm: FC<IListQuickAddIssueForm> = observer((props
         </div>
       ) : (
         <div
-          className="flex w-full cursor-pointer items-center gap-2 p-3 py-3 text-custom-primary-100"
+          className="flex w-full cursor-pointer items-center gap-2.5 p-6 py-3 text-custom-text-350 hover:text-custom-text-300"
           onClick={() => setIsOpen(true)}
         >
           <PlusIcon className="h-3.5 w-3.5 stroke-2" />
-          <span className="text-sm font-medium text-custom-primary-100">New Issue</span>
+          <span className="text-sm font-medium">New Issue</span>
         </div>
       )}
     </div>

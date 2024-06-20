@@ -1,8 +1,10 @@
+import { MutableRefObject, useCallback, useEffect, useRef } from "react";
 import { observer } from "mobx-react-lite";
-//types
 import { IIssueDisplayFilterOptions, IIssueDisplayProperties, TIssue } from "@plane/types";
-import { EIssueActions } from "../types";
+//types
+import { useTableKeyboardNavigation } from "@/hooks/use-table-keyboard-navigation";
 //components
+import { TRenderQuickActions } from "../list/list-view-types";
 import { SpreadsheetIssueRow } from "./issue-row";
 import { SpreadsheetHeader } from "./spreadsheet-header";
 
@@ -12,14 +14,12 @@ type Props = {
   handleDisplayFilterUpdate: (data: Partial<IIssueDisplayFilterOptions>) => void;
   issueIds: string[];
   isEstimateEnabled: boolean;
-  quickActions: (
-    issue: TIssue,
-    customActionButton?: React.ReactElement,
-    portalElement?: HTMLDivElement | null
-  ) => React.ReactNode;
-  handleIssues: (issue: TIssue, action: EIssueActions) => Promise<void>;
+  quickActions: TRenderQuickActions;
+  updateIssue: ((projectId: string, issueId: string, data: Partial<TIssue>) => Promise<void>) | undefined;
   canEditProperties: (projectId: string | undefined) => boolean;
   portalElement: React.MutableRefObject<HTMLDivElement | null>;
+  containerRef: MutableRefObject<HTMLTableElement | null>;
+  spreadsheetColumnsList: (keyof IIssueDisplayProperties)[];
 };
 
 export const SpreadsheetTable = observer((props: Props) => {
@@ -31,17 +31,58 @@ export const SpreadsheetTable = observer((props: Props) => {
     isEstimateEnabled,
     portalElement,
     quickActions,
-    handleIssues,
+    updateIssue,
     canEditProperties,
+    containerRef,
+    spreadsheetColumnsList,
   } = props;
 
+  // states
+  const isScrolled = useRef(false);
+
+  const handleScroll = useCallback(() => {
+    if (!containerRef.current) return;
+    const scrollLeft = containerRef.current.scrollLeft;
+
+    const columnShadow = "8px 22px 22px 10px rgba(0, 0, 0, 0.05)"; // shadow for regular columns
+    const headerShadow = "8px -22px 22px 10px rgba(0, 0, 0, 0.05)"; // shadow for headers
+
+    //The shadow styles are added this way to avoid re-render of all the rows of table, which could be costly
+    if (scrollLeft > 0 !== isScrolled.current) {
+      const firstColumns = containerRef.current.querySelectorAll("table tr td:first-child, th:first-child");
+
+      for (let i = 0; i < firstColumns.length; i++) {
+        const shadow = i === 0 ? headerShadow : columnShadow;
+        if (scrollLeft > 0) {
+          (firstColumns[i] as HTMLElement).style.boxShadow = shadow;
+        } else {
+          (firstColumns[i] as HTMLElement).style.boxShadow = "none";
+        }
+      }
+      isScrolled.current = scrollLeft > 0;
+    }
+  }, [containerRef]);
+
+  useEffect(() => {
+    const currentContainerRef = containerRef.current;
+
+    if (currentContainerRef) currentContainerRef.addEventListener("scroll", handleScroll);
+
+    return () => {
+      if (currentContainerRef) currentContainerRef.removeEventListener("scroll", handleScroll);
+    };
+  }, [handleScroll, containerRef]);
+
+  const handleKeyBoardNavigation = useTableKeyboardNavigation();
+
   return (
-    <table className="overflow-y-auto">
+    <table className="overflow-y-auto" onKeyDown={handleKeyBoardNavigation}>
       <SpreadsheetHeader
         displayProperties={displayProperties}
         displayFilters={displayFilters}
         handleDisplayFilterUpdate={handleDisplayFilterUpdate}
         isEstimateEnabled={isEstimateEnabled}
+        spreadsheetColumnsList={spreadsheetColumnsList}
       />
       <tbody>
         {issueIds.map((id) => (
@@ -53,8 +94,12 @@ export const SpreadsheetTable = observer((props: Props) => {
             canEditProperties={canEditProperties}
             nestingLevel={0}
             isEstimateEnabled={isEstimateEnabled}
-            handleIssues={handleIssues}
+            updateIssue={updateIssue}
             portalElement={portalElement}
+            containerRef={containerRef}
+            isScrolled={isScrolled}
+            issueIds={issueIds}
+            spreadsheetColumnsList={spreadsheetColumnsList}
           />
         ))}
       </tbody>

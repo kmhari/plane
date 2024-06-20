@@ -1,6 +1,4 @@
 // services
-import { APIService } from "services/api.service";
-// types
 import type {
   TIssue,
   IUser,
@@ -9,11 +7,13 @@ import type {
   IUserProfileData,
   IUserProfileProjectSegregation,
   IUserSettings,
-  IUserWorkspaceDashboard,
   IUserEmailNotificationSettings,
+  TUserProfile,
 } from "@plane/types";
+import { API_BASE_URL } from "@/helpers/common.helper";
+import { APIService } from "@/services/api.service";
+// types
 // helpers
-import { API_BASE_URL } from "helpers/common.helper";
 
 export class UserService extends APIService {
   constructor() {
@@ -23,7 +23,6 @@ export class UserService extends APIService {
   currentUserConfig() {
     return {
       url: `${this.baseURL}/api/users/me/`,
-      headers: this.getHeaders(),
     };
   }
 
@@ -47,6 +46,29 @@ export class UserService extends APIService {
 
   async currentUser(): Promise<IUser> {
     return this.get("/api/users/me/")
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response;
+      });
+  }
+
+  async getCurrentUserProfile(): Promise<TUserProfile> {
+    return this.get("/api/users/me/profile/")
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response;
+      });
+  }
+  async updateCurrentUserProfile(data: any): Promise<any> {
+    return this.patch("/api/users/me/profile/", data)
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response;
+      });
+  }
+
+  async getCurrentUserAccounts(): Promise<any> {
+    return this.get("/api/users/me/accounts/")
       .then((response) => response?.data)
       .catch((error) => {
         throw error?.response;
@@ -113,28 +135,20 @@ export class UserService extends APIService {
       });
   }
 
-  async getUserActivity(): Promise<IUserActivityResponse> {
-    return this.get(`/api/users/me/activities/`)
+  async getUserActivity(params: { per_page: number; cursor?: string }): Promise<IUserActivityResponse> {
+    return this.get("/api/users/me/activities/", { params })
       .then((response) => response?.data)
       .catch((error) => {
         throw error?.response?.data;
       });
   }
 
-  async userWorkspaceDashboard(workspaceSlug: string, month: number): Promise<IUserWorkspaceDashboard> {
-    return this.get(`/api/users/me/workspaces/${workspaceSlug}/dashboard/`, {
-      params: {
-        month: month,
+  async changePassword(token: string, data: { old_password: string; new_password: string }): Promise<any> {
+    return this.post(`/auth/change-password/`, data, {
+      headers: {
+        "X-CSRFTOKEN": token,
       },
     })
-      .then((response) => response?.data)
-      .catch((error) => {
-        throw error?.response?.data;
-      });
-  }
-
-  async changePassword(data: { old_password: string; new_password: string; confirm_password: string }): Promise<any> {
-    return this.post(`/api/users/me/change-password/`, data)
       .then((response) => response?.data)
       .catch((error) => {
         throw error?.response?.data;
@@ -160,8 +174,31 @@ export class UserService extends APIService {
       });
   }
 
-  async getUserProfileActivity(workspaceSlug: string, userId: string): Promise<IUserActivityResponse> {
-    return this.get(`/api/workspaces/${workspaceSlug}/user-activity/${userId}/?per_page=15`)
+  async getUserProfileActivity(
+    workspaceSlug: string,
+    userId: string,
+    params: {
+      per_page: number;
+      cursor?: string;
+    }
+  ): Promise<IUserActivityResponse> {
+    return this.get(`/api/workspaces/${workspaceSlug}/user-activity/${userId}/`, {
+      params,
+    })
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
+  async downloadProfileActivity(
+    workspaceSlug: string,
+    userId: string,
+    data: {
+      date: string;
+    }
+  ): Promise<any> {
+    return this.post(`/api/workspaces/${workspaceSlug}/user-activity/${userId}/export/`, data)
       .then((response) => response?.data)
       .catch((error) => {
         throw error?.response?.data;

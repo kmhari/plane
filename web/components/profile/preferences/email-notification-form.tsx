@@ -1,13 +1,11 @@
-import { FC } from "react";
+import React, { FC, useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
-// ui
-import { Button } from "@plane/ui";
-// hooks
-import useToast from "hooks/use-toast";
-// services
-import { UserService } from "services/user.service";
-// types
 import { IUserEmailNotificationSettings } from "@plane/types";
+// ui
+import { Button, Checkbox, TOAST_TYPE, setToast } from "@plane/ui";
+// services
+import { UserService } from "@/services/user.service";
+// types
 
 interface IEmailNotificationFormProps {
   data: IUserEmailNotificationSettings;
@@ -18,13 +16,13 @@ const userService = new UserService();
 
 export const EmailNotificationForm: FC<IEmailNotificationFormProps> = (props) => {
   const { data } = props;
-  // toast
-  const { setToastAlert } = useToast();
   // form data
   const {
     handleSubmit,
+    watch,
     control,
     setValue,
+    reset,
     formState: { isSubmitting, isDirty, dirtyFields },
   } = useForm<IUserEmailNotificationSettings>({
     defaultValues: {
@@ -44,14 +42,18 @@ export const EmailNotificationForm: FC<IEmailNotificationFormProps> = (props) =>
     await userService
       .updateCurrentUserEmailNotificationSettings(payload)
       .then(() =>
-        setToastAlert({
-          title: "Success",
-          type: "success",
+        setToast({
+          title: "Success!",
+          type: TOAST_TYPE.SUCCESS,
           message: "Email Notification Settings updated successfully",
         })
       )
       .catch((err) => console.error(err));
   };
+
+  useEffect(() => {
+    reset(data);
+  }, [reset, data]);
 
   return (
     <>
@@ -78,12 +80,7 @@ export const EmailNotificationForm: FC<IEmailNotificationFormProps> = (props) =>
               control={control}
               name="property_change"
               render={({ field: { value, onChange } }) => (
-                <input
-                  type="checkbox"
-                  checked={value}
-                  onChange={() => onChange(!value)}
-                  className="w-3.5 h-3.5 mx-2 cursor-pointer !border-custom-border-100"
-                />
+                <Checkbox checked={value} onChange={() => onChange(!value)} containerClassName="mx-2" />
               )}
             />
           </div>
@@ -100,14 +97,14 @@ export const EmailNotificationForm: FC<IEmailNotificationFormProps> = (props) =>
               control={control}
               name="state_change"
               render={({ field: { value, onChange } }) => (
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={value}
+                  indeterminate={!value && watch("issue_completed")}
                   onChange={() => {
-                    setValue("issue_completed", !value);
+                    setValue("issue_completed", !value, { shouldDirty: true });
                     onChange(!value);
                   }}
-                  className="w-3.5 h-3.5 mx-2 cursor-pointer"
+                  containerClassName="mx-2"
                 />
               )}
             />
@@ -123,12 +120,7 @@ export const EmailNotificationForm: FC<IEmailNotificationFormProps> = (props) =>
               control={control}
               name="issue_completed"
               render={({ field: { value, onChange } }) => (
-                <input
-                  type="checkbox"
-                  checked={value}
-                  onChange={() => onChange(!value)}
-                  className="w-3.5 h-3.5 mx-2 cursor-pointer"
-                />
+                <Checkbox checked={value} onChange={() => onChange(!value)} containerClassName="mx-2" />
               )}
             />
           </div>
@@ -145,12 +137,7 @@ export const EmailNotificationForm: FC<IEmailNotificationFormProps> = (props) =>
               control={control}
               name="comment"
               render={({ field: { value, onChange } }) => (
-                <input
-                  type="checkbox"
-                  checked={value}
-                  onChange={() => onChange(!value)}
-                  className="w-3.5 h-3.5 mx-2 cursor-pointer"
-                />
+                <Checkbox checked={value} onChange={() => onChange(!value)} containerClassName="mx-2" />
               )}
             />
           </div>
@@ -167,12 +154,7 @@ export const EmailNotificationForm: FC<IEmailNotificationFormProps> = (props) =>
               control={control}
               name="mention"
               render={({ field: { value, onChange } }) => (
-                <input
-                  type="checkbox"
-                  checked={value}
-                  onChange={() => onChange(!value)}
-                  className="w-3.5 h-3.5 mx-2 cursor-pointer"
-                />
+                <Checkbox checked={value} onChange={() => onChange(!value)} containerClassName="mx-2" />
               )}
             />
           </div>

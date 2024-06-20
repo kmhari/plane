@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from "react";
-import { Combobox, Dialog, Transition } from "@headlessui/react";
 import { Rocket, Search, X } from "lucide-react";
-// services
-import { ProjectService } from "services/project";
-// hooks
-import useToast from "hooks/use-toast";
-import useDebounce from "hooks/use-debounce";
-// ui
-import { Button, LayersIcon, Loader, ToggleSwitch, Tooltip } from "@plane/ui";
+import { Combobox, Dialog, Transition } from "@headlessui/react";
 // types
 import { ISearchIssueResponse, TProjectIssuesSearchParams } from "@plane/types";
+// ui
+import { Button, Loader, ToggleSwitch, Tooltip, TOAST_TYPE, setToast } from "@plane/ui";
+// hooks
+import useDebounce from "@/hooks/use-debounce";
+import { usePlatformOS } from "@/hooks/use-platform-os";
+// services
+import { ProjectService } from "@/services/project";
+// components
+import { IssueSearchModalEmptyState } from "./issue-search-modal-empty-state";
 
 type Props = {
   workspaceSlug: string | undefined;
@@ -19,6 +21,7 @@ type Props = {
   searchParams: Partial<TProjectIssuesSearchParams>;
   handleOnSubmit: (data: ISearchIssueResponse[]) => Promise<void>;
   workspaceLevelToggle?: boolean;
+  shouldHideIssue?: (issue: ISearchIssueResponse) => boolean;
 };
 
 const projectService = new ProjectService();
@@ -32,18 +35,18 @@ export const ExistingIssuesListModal: React.FC<Props> = (props) => {
     searchParams,
     handleOnSubmit,
     workspaceLevelToggle = false,
+    shouldHideIssue,
   } = props;
   // states
+  const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [issues, setIssues] = useState<ISearchIssueResponse[]>([]);
   const [selectedIssues, setSelectedIssues] = useState<ISearchIssueResponse[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isWorkspaceLevel, setIsWorkspaceLevel] = useState(false);
-
+  const { isMobile } = usePlatformOS();
   const debouncedSearchTerm: string = useDebounce(searchTerm, 500);
-
-  const { setToastAlert } = useToast();
 
   const handleClose = () => {
     onClose();
@@ -54,8 +57,8 @@ export const ExistingIssuesListModal: React.FC<Props> = (props) => {
 
   const onSubmit = async () => {
     if (selectedIssues.length === 0) {
-      setToastAlert({
-        type: "error",
+      setToast({
+        type: TOAST_TYPE.ERROR,
         title: "Error!",
         message: "Please select at least one issue.",
       });
@@ -68,18 +71,11 @@ export const ExistingIssuesListModal: React.FC<Props> = (props) => {
     await handleOnSubmit(selectedIssues).finally(() => setIsSubmitting(false));
 
     handleClose();
-
-    setToastAlert({
-      title: "Success",
-      type: "success",
-      message: `Issue${selectedIssues.length > 1 ? "s" : ""} added successfully`,
-    });
   };
 
   useEffect(() => {
     if (!isOpen || !workspaceSlug || !projectId) return;
-    if (issues.length <= 0) setIsSearching(true);
-
+    setIsLoading(true);
     projectService
       .projectIssuesSearch(workspaceSlug as string, projectId as string, {
         search: debouncedSearchTerm,
@@ -87,17 +83,13 @@ export const ExistingIssuesListModal: React.FC<Props> = (props) => {
         workspace_search: isWorkspaceLevel,
       })
       .then((res) => setIssues(res))
-      .finally(() => setIsSearching(false));
-  }, [issues, debouncedSearchTerm, isOpen, isWorkspaceLevel, projectId, searchParams, workspaceSlug]);
+      .finally(() => {
+        setIsSearching(false);
+        setIsLoading(false);
+      });
+  }, [debouncedSearchTerm, isOpen, isWorkspaceLevel, projectId, workspaceSlug]);
 
-  useEffect(() => {
-    setSearchTerm("");
-    setIssues([]);
-    setSelectedIssues([]);
-    setIsSearching(false);
-    setIsSubmitting(false);
-    setIsWorkspaceLevel(false);
-  }, [isOpen]);
+  const filteredIssues = issues.filter((issue) => !shouldHideIssue?.(issue));
 
   return (
     <>
@@ -172,7 +164,7 @@ export const ExistingIssuesListModal: React.FC<Props> = (props) => {
                       </div>
                     )}
                     {workspaceLevelToggle && (
-                      <Tooltip tooltipContent="Toggle workspace level search">
+                      <Tooltip tooltipContent="Toggle workspace level search" isMobile={isMobile}>
                         <div
                           className={`flex flex-shrink-0 cursor-pointer items-center gap-1 text-xs ${
                             isWorkspaceLevel ? "text-custom-text-100" : "text-custom-text-200"
@@ -194,7 +186,10 @@ export const ExistingIssuesListModal: React.FC<Props> = (props) => {
                     )}
                   </div>
 
-                  <Combobox.Options static className="max-h-80 scroll-py-2 overflow-y-auto">
+                  <Combobox.Options
+                    static
+                    className="vertical-scrollbar scrollbar-md max-h-80 scroll-py-2 overflow-y-auto"
+                  >
                     {searchTerm !== "" && (
                       <h5 className="mx-2 text-[0.825rem] text-custom-text-200">
                         Search results for{" "}
@@ -207,17 +202,7 @@ export const ExistingIssuesListModal: React.FC<Props> = (props) => {
                       </h5>
                     )}
 
-                    {!isSearching && issues.length === 0 && searchTerm !== "" && debouncedSearchTerm !== "" && (
-                      <div className="flex flex-col items-center justify-center gap-4 px-3 py-8 text-center">
-                        <LayersIcon height="52" width="52" />
-                        <h3 className="text-custom-text-200">
-                          No issues found. Create a new issue with{" "}
-                          <pre className="inline rounded bg-custom-background-80 px-2 py-1 text-sm">C</pre>.
-                        </h3>
-                      </div>
-                    )}
-
-                    {isSearching ? (
+                    {isSearching || isLoading ? (
                       <Loader className="space-y-3 p-3">
                         <Loader.Item height="40px" />
                         <Loader.Item height="40px" />
@@ -225,48 +210,59 @@ export const ExistingIssuesListModal: React.FC<Props> = (props) => {
                         <Loader.Item height="40px" />
                       </Loader>
                     ) : (
-                      <ul className={`text-sm text-custom-text-100 ${issues.length > 0 ? "p-2" : ""}`}>
-                        {issues.map((issue) => {
-                          const selected = selectedIssues.some((i) => i.id === issue.id);
+                      <>
+                        {filteredIssues.length === 0 ? (
+                          <IssueSearchModalEmptyState
+                            debouncedSearchTerm={debouncedSearchTerm}
+                            isSearching={isSearching}
+                            issues={filteredIssues}
+                            searchTerm={searchTerm}
+                          />
+                        ) : (
+                          <ul className={`text-sm text-custom-text-100 ${filteredIssues.length > 0 ? "p-2" : ""}`}>
+                            {filteredIssues.map((issue) => {
+                              const selected = selectedIssues.some((i) => i.id === issue.id);
 
-                          return (
-                            <Combobox.Option
-                              key={issue.id}
-                              as="label"
-                              htmlFor={`issue-${issue.id}`}
-                              value={issue}
-                              className={({ active }) =>
-                                `group flex w-full cursor-pointer select-none items-center justify-between gap-2 rounded-md px-3 py-2 text-custom-text-200 ${
-                                  active ? "bg-custom-background-80 text-custom-text-100" : ""
-                                } ${selected ? "text-custom-text-100" : ""}`
-                              }
-                            >
-                              <div className="flex items-center gap-2">
-                                <input type="checkbox" checked={selected} readOnly />
-                                <span
-                                  className="block h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                                  style={{
-                                    backgroundColor: issue.state__color,
-                                  }}
-                                />
-                                <span className="flex-shrink-0 text-xs">
-                                  {issue.project__identifier}-{issue.sequence_id}
-                                </span>
-                                {issue.name}
-                              </div>
-                              <a
-                                href={`/${workspaceSlug}/projects/${issue.project_id}/issues/${issue.id}`}
-                                target="_blank"
-                                className="z-1 relative hidden text-custom-text-200 hover:text-custom-text-100 group-hover:block"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Rocket className="h-4 w-4" />
-                              </a>
-                            </Combobox.Option>
-                          );
-                        })}
-                      </ul>
+                              return (
+                                <Combobox.Option
+                                  key={issue.id}
+                                  as="label"
+                                  htmlFor={`issue-${issue.id}`}
+                                  value={issue}
+                                  className={({ active }) =>
+                                    `group flex w-full cursor-pointer select-none items-center justify-between gap-2 rounded-md px-3 py-2 text-custom-text-200 ${
+                                      active ? "bg-custom-background-80 text-custom-text-100" : ""
+                                    } ${selected ? "text-custom-text-100" : ""}`
+                                  }
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <input type="checkbox" checked={selected} readOnly />
+                                    <span
+                                      className="block h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                                      style={{
+                                        backgroundColor: issue.state__color,
+                                      }}
+                                    />
+                                    <span className="flex-shrink-0 text-xs">
+                                      {issue.project__identifier}-{issue.sequence_id}
+                                    </span>
+                                    {issue.name}
+                                  </div>
+                                  <a
+                                    href={`/${workspaceSlug}/projects/${issue.project_id}/issues/${issue.id}`}
+                                    target="_blank"
+                                    className="z-1 relative hidden text-custom-text-200 hover:text-custom-text-100 group-hover:block"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <Rocket className="h-4 w-4" />
+                                  </a>
+                                </Combobox.Option>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </>
                     )}
                   </Combobox.Options>
                 </Combobox>

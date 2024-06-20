@@ -1,26 +1,27 @@
 import { useState } from "react";
-import Link from "next/link";
+import { observer } from "mobx-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/router";
 import useSWR, { mutate } from "swr";
-import { observer } from "mobx-react-lite";
-// hooks
-import { useUser } from "hooks/store";
-import useUserAuth from "hooks/use-user-auth";
-// services
-import { IntegrationService } from "services/integrations";
-// components
-import { DeleteImportModal, GithubImporterRoot, JiraImporterRoot, SingleImport } from "components/integration";
-// ui
-import { Button, Loader } from "@plane/ui";
 // icons
 import { RefreshCw } from "lucide-react";
 // types
 import { IImporterService } from "@plane/types";
-// fetch-keys
-import { IMPORTER_SERVICES_LIST } from "constants/fetch-keys";
+// ui
+import { Button } from "@plane/ui";
+// components
+import { EmptyState } from "@/components/empty-state";
+import { DeleteImportModal, GithubImporterRoot, JiraImporterRoot, SingleImport } from "@/components/integration";
+import { ImportExportSettingsLoader } from "@/components/ui";
 // constants
-import { IMPORTERS_LIST } from "constants/workspace";
+import { EmptyStateType } from "@/constants/empty-state";
+import { IMPORTER_SERVICES_LIST } from "@/constants/fetch-keys";
+import { IMPORTERS_LIST } from "@/constants/workspace";
+// hooks
+import { useUser } from "@/hooks/store";
+// services
+import { IntegrationService } from "@/services/integrations";
 
 // services
 const integrationService = new IntegrationService();
@@ -34,9 +35,7 @@ const IntegrationGuide = observer(() => {
   const router = useRouter();
   const { workspaceSlug, provider } = router.query;
   // store hooks
-  const { currentUser, currentUserLoader } = useUser();
-  // custom hooks
-  const {} = useUserAuth({ user: currentUser, isLoading: currentUserLoader });
+  const { data: currentUser } = useUser();
 
   const { data: importerServices } = useSWR(
     workspaceSlug ? IMPORTER_SERVICES_LIST(workspaceSlug as string) : null,
@@ -54,7 +53,7 @@ const IntegrationGuide = observer(() => {
         isOpen={deleteImportModal}
         handleClose={() => setDeleteImportModal(false)}
         data={importToDelete}
-        user={currentUser}
+        user={currentUser || null}
       />
       <div className="h-full">
         {(!provider || provider === "csv") && (
@@ -134,15 +133,12 @@ const IntegrationGuide = observer(() => {
                       </div>
                     </div>
                   ) : (
-                    <p className="px-4 py-6 text-sm text-custom-text-200">No previous imports available.</p>
+                    <div className="flex h-full w-full items-center justify-center">
+                      <EmptyState type={EmptyStateType.WORKSPACE_SETTINGS_IMPORT} size="sm" />
+                    </div>
                   )
                 ) : (
-                  <Loader className="mt-6 grid grid-cols-1 gap-3">
-                    <Loader.Item height="40px" width="100%" />
-                    <Loader.Item height="40px" width="100%" />
-                    <Loader.Item height="40px" width="100%" />
-                    <Loader.Item height="40px" width="100%" />
-                  </Loader>
+                  <ImportExportSettingsLoader />
                 )}
               </div>
             </div>

@@ -1,16 +1,17 @@
-import React, { Fragment, useRef, useState } from "react";
+import React, { Fragment, useEffect, useRef, useState } from "react";
+import { observer } from "mobx-react";
 import { useRouter } from "next/router";
-import { Combobox } from "@headlessui/react";
 import { usePopper } from "react-popper";
-import { observer } from "mobx-react-lite";
-// hooks
-import { useLabel } from "hooks/store";
-import { useDropdownKeyDown } from "hooks/use-dropdown-key-down";
-import useOutsideClickDetector from "hooks/use-outside-click-detector";
-// ui
-import { IssueLabelsList } from "components/ui";
-// icons
 import { Check, Component, Plus, Search, Tag } from "lucide-react";
+import { Combobox } from "@headlessui/react";
+// components
+import { IssueLabelsList } from "@/components/ui";
+// helpers
+import { cn } from "@/helpers/common.helper";
+// hooks
+import { useLabel } from "@/hooks/store";
+import { useDropdownKeyDown } from "@/hooks/use-dropdown-key-down";
+import useOutsideClickDetector from "@/hooks/use-outside-click-detector";
 
 type Props = {
   setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -20,10 +21,22 @@ type Props = {
   label?: JSX.Element;
   disabled?: boolean;
   tabIndex?: number;
+  createLabelEnabled?: boolean;
+  buttonClassName?: string;
 };
 
 export const IssueLabelSelect: React.FC<Props> = observer((props) => {
-  const { setIsOpen, value, onChange, projectId, label, disabled = false, tabIndex } = props;
+  const {
+    setIsOpen,
+    value,
+    onChange,
+    projectId,
+    label,
+    disabled = false,
+    tabIndex,
+    createLabelEnabled = true,
+    buttonClassName,
+  } = props;
   // router
   const router = useRouter();
   const { workspaceSlug } = router.query;
@@ -36,6 +49,7 @@ export const IssueLabelSelect: React.FC<Props> = observer((props) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   // refs
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   // popper
   const { styles, attributes } = usePopper(referenceElement, popperElement, {
     placement: "bottom-start",
@@ -55,6 +69,7 @@ export const IssueLabelSelect: React.FC<Props> = observer((props) => {
   const handleClose = () => {
     if (isDropdownOpen) setIsDropdownOpen(false);
     if (referenceElement) referenceElement.blur();
+    setQuery("");
   };
 
   const toggleDropdown = () => {
@@ -76,6 +91,12 @@ export const IssueLabelSelect: React.FC<Props> = observer((props) => {
 
   useOutsideClickDetector(dropdownRef, handleClose);
 
+  useEffect(() => {
+    if (isDropdownOpen && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isDropdownOpen]);
+
   return (
     <Combobox
       as="div"
@@ -92,13 +113,13 @@ export const IssueLabelSelect: React.FC<Props> = observer((props) => {
         <button
           type="button"
           ref={setReferenceElement}
-          className="h-full flex cursor-pointer items-center gap-2 text-xs text-custom-text-200"
+          className={cn("h-full flex cursor-pointer items-center gap-2 text-xs text-custom-text-200", buttonClassName)}
           onClick={handleOnClick}
         >
           {label ? (
             label
           ) : value && value.length > 0 ? (
-            <span className="flex items-center justify-center gap-2 text-xs">
+            <span className="flex items-center justify-center gap-2 text-xs h-full">
               <IssueLabelsList
                 labels={value.map((v) => projectLabels?.find((l) => l.id === v)) ?? []}
                 length={3}
@@ -125,6 +146,8 @@ export const IssueLabelSelect: React.FC<Props> = observer((props) => {
             <div className="flex items-center gap-1.5 rounded border border-custom-border-100 bg-custom-background-90 px-2">
               <Search className="h-3.5 w-3.5 text-custom-text-400" strokeWidth={1.5} />
               <Combobox.Input
+                as="input"
+                ref={inputRef}
                 className="w-full bg-transparent py-1 text-xs text-custom-text-200 placeholder:text-custom-text-400 focus:outline-none"
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search"
@@ -145,22 +168,22 @@ export const IssueLabelSelect: React.FC<Props> = observer((props) => {
                             className={({ active }) =>
                               `${
                                 active ? "bg-custom-background-80" : ""
-                              } group flex min-w-[14rem] cursor-pointer select-none items-center gap-2 truncate rounded px-1 py-1.5 text-custom-text-200`
+                              } group flex w-full cursor-pointer select-none items-center gap-2 truncate rounded px-1 py-1.5 text-custom-text-200`
                             }
                             value={label.id}
                           >
                             {({ selected }) => (
                               <div className="flex w-full justify-between gap-2 rounded">
-                                <div className="flex items-center justify-start gap-2">
+                                <div className="flex items-center justify-start gap-2 truncate">
                                   <span
                                     className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
                                     style={{
                                       backgroundColor: label.color,
                                     }}
                                   />
-                                  <span>{label.name}</span>
+                                  <span className="truncate">{label.name}</span>
                                 </div>
-                                <div className="flex items-center justify-center rounded p-1">
+                                <div className="flex shrink-0 items-center justify-center rounded p-1">
                                   <Check className={`h-3 w-3 ${selected ? "opacity-100" : "opacity-0"}`} />
                                 </div>
                               </div>
@@ -169,7 +192,7 @@ export const IssueLabelSelect: React.FC<Props> = observer((props) => {
                         );
                     } else
                       return (
-                        <div className="border-y border-custom-border-200">
+                        <div key={label.id} className="border-y border-custom-border-200">
                           <div className="flex select-none items-center gap-2 truncate p-2 text-custom-text-100">
                             <Component className="h-3 w-3" /> {label.name}
                           </div>
@@ -212,14 +235,16 @@ export const IssueLabelSelect: React.FC<Props> = observer((props) => {
               ) : (
                 <p className="text-custom-text-400 italic py-1 px-1.5">Loading...</p>
               )}
-              <button
-                type="button"
-                className="flex items-center gap-2 w-full select-none rounded px-1 py-2 hover:bg-custom-background-80"
-                onClick={() => setIsOpen(true)}
-              >
-                <Plus className="h-3 w-3" aria-hidden="true" />
-                <span className="whitespace-nowrap">Create new label</span>
-              </button>
+              {createLabelEnabled && (
+                <button
+                  type="button"
+                  className="flex items-center gap-2 w-full select-none rounded px-1 py-2 hover:bg-custom-background-80"
+                  onClick={() => setIsOpen(true)}
+                >
+                  <Plus className="h-3 w-3" aria-hidden="true" />
+                  <span className="whitespace-nowrap">Create new label</span>
+                </button>
+              )}
             </div>
           </div>
         </Combobox.Options>

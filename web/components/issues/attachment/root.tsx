@@ -1,7 +1,8 @@
 import { FC, useMemo } from "react";
 // hooks
-import { useIssueDetail } from "hooks/store";
-import useToast from "hooks/use-toast";
+import { TOAST_TYPE, setPromiseToast, setToast } from "@plane/ui";
+import { useEventTracker, useIssueDetail } from "@/hooks/store";
+// ui
 // components
 import { IssueAttachmentUpload } from "./attachment-upload";
 import { IssueAttachmentsList } from "./attachments-list";
@@ -23,24 +24,40 @@ export const IssueAttachmentRoot: FC<TIssueAttachmentRoot> = (props) => {
   const { workspaceSlug, projectId, issueId, disabled = false } = props;
   // hooks
   const { createAttachment, removeAttachment } = useIssueDetail();
-  const { setToastAlert } = useToast();
+  const { captureIssueEvent } = useEventTracker();
 
   const handleAttachmentOperations: TAttachmentOperations = useMemo(
     () => ({
       create: async (data: FormData) => {
         try {
           if (!workspaceSlug || !projectId || !issueId) throw new Error("Missing required fields");
-          await createAttachment(workspaceSlug, projectId, issueId, data);
-          setToastAlert({
-            message: "The attachment has been successfully uploaded",
-            type: "success",
-            title: "Attachment uploaded",
+
+          const attachmentUploadPromise = createAttachment(workspaceSlug, projectId, issueId, data);
+          setPromiseToast(attachmentUploadPromise, {
+            loading: "Uploading attachment...",
+            success: {
+              title: "Attachment uploaded",
+              message: () => "The attachment has been successfully uploaded",
+            },
+            error: {
+              title: "Attachment not uploaded",
+              message: () => "The attachment could not be uploaded",
+            },
+          });
+
+          const res = await attachmentUploadPromise;
+          captureIssueEvent({
+            eventName: "Issue attachment added",
+            payload: { id: issueId, state: "SUCCESS", element: "Issue detail page" },
+            updates: {
+              changed_property: "attachment",
+              change_details: res.id,
+            },
           });
         } catch (error) {
-          setToastAlert({
-            message: "The attachment could not be uploaded",
-            type: "error",
-            title: "Attachment not uploaded",
+          captureIssueEvent({
+            eventName: "Issue attachment added",
+            payload: { id: issueId, state: "FAILED", element: "Issue detail page" },
           });
         }
       },
@@ -48,27 +65,43 @@ export const IssueAttachmentRoot: FC<TIssueAttachmentRoot> = (props) => {
         try {
           if (!workspaceSlug || !projectId || !issueId) throw new Error("Missing required fields");
           await removeAttachment(workspaceSlug, projectId, issueId, attachmentId);
-          setToastAlert({
+          setToast({
             message: "The attachment has been successfully removed",
-            type: "success",
+            type: TOAST_TYPE.SUCCESS,
             title: "Attachment removed",
           });
+          captureIssueEvent({
+            eventName: "Issue attachment deleted",
+            payload: { id: issueId, state: "SUCCESS", element: "Issue detail page" },
+            updates: {
+              changed_property: "attachment",
+              change_details: "",
+            },
+          });
         } catch (error) {
-          setToastAlert({
+          captureIssueEvent({
+            eventName: "Issue attachment deleted",
+            payload: { id: issueId, state: "FAILED", element: "Issue detail page" },
+            updates: {
+              changed_property: "attachment",
+              change_details: "",
+            },
+          });
+          setToast({
             message: "The Attachment could not be removed",
-            type: "error",
+            type: TOAST_TYPE.ERROR,
             title: "Attachment not removed",
           });
         }
       },
     }),
-    [workspaceSlug, projectId, issueId, createAttachment, removeAttachment, setToastAlert]
+    [captureIssueEvent, workspaceSlug, projectId, issueId, createAttachment, removeAttachment]
   );
 
   return (
     <div className="relative py-3 space-y-3">
       <h3 className="text-lg">Attachments</h3>
-      <div className="grid  grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         <IssueAttachmentUpload
           workspaceSlug={workspaceSlug}
           disabled={disabled}

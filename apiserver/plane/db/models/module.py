@@ -1,9 +1,9 @@
 # Django imports
-from django.db import models
 from django.conf import settings
+from django.db import models
 
 # Module imports
-from . import ProjectBaseModel
+from .project import ProjectBaseModel
 
 
 def get_default_filters():
@@ -92,6 +92,8 @@ class Module(ProjectBaseModel):
     sort_order = models.FloatField(default=65535)
     external_source = models.CharField(max_length=255, null=True, blank=True)
     external_id = models.CharField(max_length=255, blank=True, null=True)
+    archived_at = models.DateTimeField(null=True)
+    logo_props = models.JSONField(default=dict)
 
     class Meta:
         unique_together = ["name", "project"]

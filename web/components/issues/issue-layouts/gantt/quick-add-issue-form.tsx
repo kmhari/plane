@@ -1,18 +1,22 @@
 import { useEffect, useState, useRef, FC } from "react";
+import { observer } from "mobx-react";
 import { useRouter } from "next/router";
 import { useForm } from "react-hook-form";
-import { observer } from "mobx-react-lite";
 import { PlusIcon } from "lucide-react";
-// hooks
-import { useProject } from "hooks/store";
-import useToast from "hooks/use-toast";
-import useKeypress from "hooks/use-keypress";
-import useOutsideClickDetector from "hooks/use-outside-click-detector";
-// helpers
-import { renderFormattedPayloadDate } from "helpers/date-time.helper";
-import { createIssuePayload } from "helpers/issue.helper";
-// types
 import { IProject, TIssue } from "@plane/types";
+// hooks
+import { setPromiseToast } from "@plane/ui";
+import { ISSUE_CREATED } from "@/constants/event-tracker";
+import { cn } from "@/helpers/common.helper";
+import { renderFormattedPayloadDate } from "@/helpers/date-time.helper";
+import { createIssuePayload } from "@/helpers/issue.helper";
+import { useEventTracker, useProject } from "@/hooks/store";
+import useKeypress from "@/hooks/use-keypress";
+import useOutsideClickDetector from "@/hooks/use-outside-click-detector";
+// helpers
+// ui
+// types
+// constants
 
 interface IInputProps {
   formKey: string;
@@ -66,7 +70,7 @@ export const GanttQuickAddIssueForm: React.FC<IGanttQuickAddIssueForm> = observe
   const { workspaceSlug, projectId } = router.query;
   // hooks
   const { getProjectById } = useProject();
-  const { setToastAlert } = useToast();
+  const { captureIssueEvent } = useEventTracker();
 
   const projectDetail = (projectId && getProjectById(projectId.toString())) || undefined;
 
@@ -106,28 +110,45 @@ export const GanttQuickAddIssueForm: React.FC<IGanttQuickAddIssueForm> = observe
       target_date: renderFormattedPayloadDate(targetDate),
     });
 
-    try {
-      quickAddCallback &&
-        (await quickAddCallback(workspaceSlug.toString(), projectId.toString(), { ...payload }, viewId));
-      setToastAlert({
-        type: "success",
-        title: "Success!",
-        message: "Issue created successfully.",
+    if (quickAddCallback) {
+      const quickAddPromise = quickAddCallback(workspaceSlug.toString(), projectId.toString(), { ...payload }, viewId);
+      setPromiseToast<any>(quickAddPromise, {
+        loading: "Adding issue...",
+        success: {
+          title: "Success!",
+          message: () => "Issue created successfully.",
+        },
+        error: {
+          title: "Error!",
+          message: (err) => err?.message || "Some error occurred. Please try again.",
+        },
       });
-    } catch (err: any) {
-      setToastAlert({
-        type: "error",
-        title: "Error!",
-        message: err?.message || "Some error occurred. Please try again.",
-      });
+
+      await quickAddPromise
+        .then((res) => {
+          captureIssueEvent({
+            eventName: ISSUE_CREATED,
+            payload: { ...res, state: "SUCCESS", element: "Gantt quick add" },
+            path: router.asPath,
+          });
+        })
+        .catch(() => {
+          captureIssueEvent({
+            eventName: ISSUE_CREATED,
+            payload: { ...payload, state: "FAILED", element: "Gantt quick add" },
+            path: router.asPath,
+          });
+        });
     }
   };
   return (
     <>
-      <div
-        className={`${errors && errors?.name && errors?.name?.message ? `border border-red-500/20 bg-red-500/10` : ``}`}
-      >
-        {isOpen ? (
+      {isOpen ? (
+        <div
+          className={cn("sticky bottom-0 z-[1] bg-custom-background-100", {
+            "border border-red-500/20 bg-red-500/10": errors && errors?.name && errors?.name?.message,
+          })}
+        >
           <div className="shadow-custom-shadow-sm">
             <form
               ref={ref}
@@ -138,16 +159,17 @@ export const GanttQuickAddIssueForm: React.FC<IGanttQuickAddIssueForm> = observe
             </form>
             <div className="px-3 py-2 text-xs italic text-custom-text-200">{`Press 'Enter' to add another issue`}</div>
           </div>
-        ) : (
-          <div
-            className="flex w-full cursor-pointer items-center gap-2 p-3 py-3 text-custom-primary-100"
-            onClick={() => setIsOpen(true)}
-          >
-            <PlusIcon className="h-3.5 w-3.5 stroke-2" />
-            <span className="text-sm font-medium text-custom-primary-100">New Issue</span>
-          </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="sticky bottom-0 z-[1] flex w-full cursor-pointer items-center gap-2 border-t-[1px] border-custom-border-200 bg-custom-background-100 px-3 pt-2 text-custom-text-350 hover:text-custom-text-300"
+          onClick={() => setIsOpen(true)}
+        >
+          <PlusIcon className="h-3.5 w-3.5 stroke-2" />
+          <span className="text-sm font-medium">New Issue</span>
+        </button>
+      )}
     </>
   );
 });

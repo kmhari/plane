@@ -1,59 +1,48 @@
 import { FC, ReactNode } from "react";
-// layouts
-import { UserAuthWrapper, WorkspaceAuthWrapper, ProjectAuthWrapper } from "layouts/auth-layout";
-// components
-import { CommandPalette } from "components/command-palette";
-import { AppSidebar } from "./sidebar";
 import { observer } from "mobx-react-lite";
-
-//  FIXME: remove this later
-import { useIssues } from "hooks/store/use-issues";
-import { EIssuesStoreType } from "constants/issue";
-import useSWR from "swr";
+// components
+import { CommandPalette } from "@/components/command-palette";
+import { SidebarHamburgerToggle } from "@/components/core/sidebar";
+// layouts
+import { WorkspaceAuthWrapper, ProjectAuthWrapper } from "@/layouts/auth-layout";
+// wrappers
+import { AuthenticationWrapper } from "@/lib/wrappers";
+import { AppSidebar } from "./sidebar";
 
 export interface IAppLayout {
   children: ReactNode;
   header: ReactNode;
   withProjectWrapper?: boolean;
+  mobileHeader?: ReactNode;
 }
 
 export const AppLayout: FC<IAppLayout> = observer((props) => {
-  const { children, header, withProjectWrapper = false } = props;
-
-  const workspaceSlug = "plane-demo";
-  const projectId = "b16907a9-a55f-4f5b-b05e-7065a0869ba6";
-
-  const { issues, issuesFilter } = useIssues(EIssuesStoreType.ARCHIVED);
-
-  useSWR(
-    workspaceSlug && projectId ? `PROJECT_ARCHIVED_ISSUES_V3_${workspaceSlug}_${projectId}` : null,
-    async () => {
-      if (workspaceSlug && projectId) {
-        await issuesFilter?.fetchFilters(workspaceSlug, projectId);
-        // await issues?.fetchIssues(workspaceSlug, projectId, issues?.groupedIssueIds ? "mutation" : "init-loader");
-      }
-    },
-    { revalidateOnFocus: false, refreshInterval: 600000, revalidateOnMount: true }
-  );
+  const { children, header, withProjectWrapper = false, mobileHeader } = props;
 
   return (
-    <>
+    <AuthenticationWrapper>
       <CommandPalette />
-      <UserAuthWrapper>
-        <WorkspaceAuthWrapper>
-          <div className="relative flex h-screen w-full overflow-hidden">
-            <AppSidebar />
-            <main className="relative flex h-full w-full flex-col overflow-hidden bg-custom-background-100">
-              {header}
-              <div className="h-full w-full overflow-hidden">
-                <div className="relative h-full w-full overflow-x-hidden overflow-y-scroll">
-                  {withProjectWrapper ? <ProjectAuthWrapper>{children}</ProjectAuthWrapper> : <>{children}</>}
+      <WorkspaceAuthWrapper>
+        <div className="relative flex h-screen w-full overflow-hidden">
+          <AppSidebar />
+          <main className="relative flex h-full w-full flex-col overflow-hidden bg-custom-background-100">
+            <div className="z-[15]">
+              <div className="z-10 flex w-full items-center border-b border-custom-border-200">
+                <div className="block bg-custom-sidebar-background-100  py-4 pl-5 md:hidden">
+                  <SidebarHamburgerToggle />
                 </div>
+                <div className="w-full">{header}</div>
               </div>
-            </main>
-          </div>
-        </WorkspaceAuthWrapper>
-      </UserAuthWrapper>
-    </>
+              {mobileHeader && mobileHeader}
+            </div>
+            <div className="h-full w-full overflow-hidden">
+              <div className="relative h-full w-full overflow-x-hidden overflow-y-scroll">
+                {withProjectWrapper ? <ProjectAuthWrapper>{children}</ProjectAuthWrapper> : <>{children}</>}
+              </div>
+            </div>
+          </main>
+        </div>
+      </WorkspaceAuthWrapper>
+    </AuthenticationWrapper>
   );
 });

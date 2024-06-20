@@ -1,15 +1,16 @@
-import { action, computed, observable, makeObservable, runInAction } from "mobx";
-import { RootStore } from "../root.store";
 import set from "lodash/set";
-// types
+import { action, computed, observable, makeObservable, runInAction } from "mobx";
 import { IWorkspace } from "@plane/types";
+import { WorkspaceService } from "@/services/workspace.service";
+import { RootStore } from "../root.store";
+// types
 // services
-import { WorkspaceService } from "services/workspace.service";
 // sub-stores
-import { IWebhookStore, WebhookStore } from "./webhook.store";
 import { ApiTokenStore, IApiTokenStore } from "./api-token.store";
+import { IWebhookStore, WebhookStore } from "./webhook.store";
 
 export interface IWorkspaceRootStore {
+  loader: boolean;
   // observables
   workspaces: Record<string, IWorkspace>;
   // computed
@@ -30,6 +31,7 @@ export interface IWorkspaceRootStore {
 }
 
 export class WorkspaceRootStore implements IWorkspaceRootStore {
+  loader: boolean = false;
   // observables
   workspaces: Record<string, IWorkspace> = {};
   // services
@@ -43,6 +45,7 @@ export class WorkspaceRootStore implements IWorkspaceRootStore {
 
   constructor(_rootStore: RootStore) {
     makeObservable(this, {
+      loader: observable.ref,
       // observables
       workspaces: observable,
       // computed
@@ -61,7 +64,7 @@ export class WorkspaceRootStore implements IWorkspaceRootStore {
     // services
     this.workspaceService = new WorkspaceService();
     // root store
-    this.router = _rootStore.app.router;
+    this.router = _rootStore.router;
     this.user = _rootStore.user;
     // sub-stores
     this.webhook = new WebhookStore(_rootStore);
@@ -83,7 +86,7 @@ export class WorkspaceRootStore implements IWorkspaceRootStore {
    */
   get workspacesCreatedByCurrentUser() {
     if (!this.workspaces) return null;
-    const user = this.user.currentUser;
+    const user = this.user.data;
     if (!user) return null;
     const userWorkspaces = Object.values(this.workspaces ?? {})?.filter((w) => w.created_by === user?.id);
     return userWorkspaces || null;
@@ -106,12 +109,14 @@ export class WorkspaceRootStore implements IWorkspaceRootStore {
    * fetch user workspaces from API
    */
   fetchWorkspaces = async () => {
+    this.loader = true;
     const workspaceResponse = await this.workspaceService.userWorkspaces();
     runInAction(() => {
       workspaceResponse.forEach((workspace) => {
         set(this.workspaces, [workspace.id], workspace);
       });
     });
+    this.loader = false;
     return workspaceResponse;
   };
 

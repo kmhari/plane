@@ -1,23 +1,27 @@
 import React from "react";
+import { observer } from "mobx-react";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { observer } from "mobx-react-lite";
-// hooks
-import { useApplication, useUser } from "hooks/store";
-// components
-import { NotificationPopover } from "components/notifications";
+import { Crown } from "lucide-react";
 // ui
 import { Tooltip } from "@plane/ui";
-import { Crown } from "lucide-react";
+// components
+import { NotificationPopover } from "@/components/notifications";
 // constants
-import { EUserWorkspaceRoles } from "constants/workspace";
-import { SIDEBAR_MENU_ITEMS } from "constants/dashboard";
+import { SIDEBAR_MENU_ITEMS } from "@/constants/dashboard";
+import { SIDEBAR_CLICKED } from "@/constants/event-tracker";
+import { EUserWorkspaceRoles } from "@/constants/workspace";
 // helper
-import { cn } from "helpers/common.helper";
+import { cn } from "@/helpers/common.helper";
+// hooks
+import { useAppTheme, useEventTracker, useUser } from "@/hooks/store";
+import { usePlatformOS } from "@/hooks/use-platform-os";
 
 export const WorkspaceSidebarMenu = observer(() => {
   // store hooks
-  const { theme: themeStore } = useApplication();
+  const { toggleSidebar, sidebarCollapsed } = useAppTheme();
+  const { captureEvent } = useEventTracker();
+  const { isMobile } = usePlatformOS();
   const {
     membership: { currentWorkspaceRole },
   } = useUser();
@@ -27,10 +31,13 @@ export const WorkspaceSidebarMenu = observer(() => {
   // computed
   const workspaceMemberInfo = currentWorkspaceRole || EUserWorkspaceRoles.GUEST;
 
-  const handleLinkClick = () => {
+  const handleLinkClick = (itemKey: string) => {
     if (window.innerWidth < 768) {
-      themeStore.toggleSidebar();
+      toggleSidebar();
     }
+    captureEvent(SIDEBAR_CLICKED, {
+      destination: itemKey,
+    });
   };
 
   return (
@@ -38,22 +45,21 @@ export const WorkspaceSidebarMenu = observer(() => {
       {SIDEBAR_MENU_ITEMS.map(
         (link) =>
           workspaceMemberInfo >= link.access && (
-            <Link key={link.key}
-              href={`/${workspaceSlug}${link.href}`}
-              onClick={handleLinkClick}
-            >
-              <span className="block w-full my-1">
+            <Link key={link.key} href={`/${workspaceSlug}${link.href}`} onClick={() => handleLinkClick(link.key)}>
+              <span className="my-1 block w-full">
                 <Tooltip
                   tooltipContent={link.label}
                   position="right"
                   className="ml-2"
-                  disabled={!themeStore?.sidebarCollapsed}
+                  disabled={!sidebarCollapsed}
+                  isMobile={isMobile}
                 >
                   <div
-                    className={`group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium outline-none ${link.highlight(router.asPath, `/${workspaceSlug}`)
-                      ? "bg-custom-primary-100/10 text-custom-primary-100"
-                      : "text-custom-sidebar-text-200 hover:bg-custom-sidebar-background-80 focus:bg-custom-sidebar-background-80"
-                      } ${themeStore?.sidebarCollapsed ? "justify-center" : ""}`}
+                    className={`group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium outline-none ${
+                      link.highlight(router.asPath, `/${workspaceSlug}`)
+                        ? "bg-custom-primary-100/10 text-custom-primary-100"
+                        : "text-custom-sidebar-text-200 hover:bg-custom-sidebar-background-80 focus:bg-custom-sidebar-background-80"
+                    } ${sidebarCollapsed ? "justify-center" : ""}`}
                   >
                     {
                       <link.Icon
@@ -62,8 +68,8 @@ export const WorkspaceSidebarMenu = observer(() => {
                         })}
                       />
                     }
-                    {!themeStore?.sidebarCollapsed && link.label}
-                    {!themeStore?.sidebarCollapsed && link.key === "active-cycles" && (
+                    {!sidebarCollapsed && <p className="leading-5">{link.label}</p>}
+                    {!sidebarCollapsed && link.key === "active-cycles" && (
                       <Crown className="h-3.5 w-3.5 text-amber-400" />
                     )}
                   </div>

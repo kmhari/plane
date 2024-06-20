@@ -1,31 +1,41 @@
 import { observer } from "mobx-react-lite";
-// components
-import { CalendarDayTile } from "components/issues";
-// helpers
-import { renderFormattedPayloadDate } from "helpers/date-time.helper";
-// types
-import { ICalendarDate, ICalendarWeek } from "./types";
 import { TGroupedIssues, TIssue, TIssueMap } from "@plane/types";
-import { ICycleIssuesFilter } from "store/issue/cycle";
-import { IModuleIssuesFilter } from "store/issue/module";
-import { IProjectIssuesFilter } from "store/issue/project";
-import { IProjectViewIssuesFilter } from "store/issue/project-views";
+// components
+import { CalendarDayTile } from "@/components/issues";
+// helpers
+import { renderFormattedPayloadDate } from "@/helpers/date-time.helper";
+// types
+import { ICycleIssuesFilter } from "@/store/issue/cycle";
+import { IModuleIssuesFilter } from "@/store/issue/module";
+import { IProjectIssuesFilter } from "@/store/issue/project";
+import { IProjectViewIssuesFilter } from "@/store/issue/project-views";
+import { TRenderQuickActions } from "../list/list-view-types";
+import { ICalendarDate, ICalendarWeek } from "./types";
 
 type Props = {
   issuesFilterStore: IProjectIssuesFilter | IModuleIssuesFilter | ICycleIssuesFilter | IProjectViewIssuesFilter;
   issues: TIssueMap | undefined;
   groupedIssueIds: TGroupedIssues;
   week: ICalendarWeek | undefined;
-  quickActions: (issue: TIssue, customActionButton?: React.ReactElement) => React.ReactNode;
+  quickActions: TRenderQuickActions;
   enableQuickIssueCreate?: boolean;
   disableIssueCreation?: boolean;
+  handleDragAndDrop: (
+    issueId: string | undefined,
+    sourceDate: string | undefined,
+    destinationDate: string | undefined
+  ) => Promise<void>;
   quickAddCallback?: (
     workspaceSlug: string,
     projectId: string,
     data: TIssue,
     viewId?: string
   ) => Promise<TIssue | undefined>;
+  addIssuesToView?: (issueIds: string[]) => Promise<any>;
   viewId?: string;
+  readOnly?: boolean;
+  selectedDate: Date;
+  setSelectedDate: (date: Date) => void;
 };
 
 export const CalendarWeekDays: React.FC<Props> = observer((props) => {
@@ -33,12 +43,17 @@ export const CalendarWeekDays: React.FC<Props> = observer((props) => {
     issuesFilterStore,
     issues,
     groupedIssueIds,
+    handleDragAndDrop,
     week,
     quickActions,
     enableQuickIssueCreate,
     disableIssueCreation,
     quickAddCallback,
+    addIssuesToView,
     viewId,
+    readOnly = false,
+    selectedDate,
+    setSelectedDate,
   } = props;
 
   const calendarLayout = issuesFilterStore?.issueFilters?.displayFilters?.calendar?.layout ?? "month";
@@ -48,7 +63,7 @@ export const CalendarWeekDays: React.FC<Props> = observer((props) => {
 
   return (
     <div
-      className={`grid divide-x-[0.5px] divide-custom-border-200 ${showWeekends ? "grid-cols-7" : "grid-cols-5"} ${
+      className={`grid divide-custom-border-200 md:divide-x-[0.5px] ${showWeekends ? "grid-cols-7" : "grid-cols-5"} ${
         calendarLayout === "month" ? "" : "h-full"
       }`}
     >
@@ -57,6 +72,8 @@ export const CalendarWeekDays: React.FC<Props> = observer((props) => {
 
         return (
           <CalendarDayTile
+            selectedDate={selectedDate}
+            setSelectedDate={setSelectedDate}
             issuesFilterStore={issuesFilterStore}
             key={renderFormattedPayloadDate(date.date)}
             date={date}
@@ -66,7 +83,10 @@ export const CalendarWeekDays: React.FC<Props> = observer((props) => {
             enableQuickIssueCreate={enableQuickIssueCreate}
             disableIssueCreation={disableIssueCreation}
             quickAddCallback={quickAddCallback}
+            addIssuesToView={addIssuesToView}
             viewId={viewId}
+            readOnly={readOnly}
+            handleDragAndDrop={handleDragAndDrop}
           />
         );
       })}

@@ -1,8 +1,8 @@
-import { Color } from "@tiptap/extension-color";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
 import TextStyle from "@tiptap/extension-text-style";
 import TiptapUnderline from "@tiptap/extension-underline";
+import Placeholder from "@tiptap/extension-placeholder";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "tiptap-markdown";
 
@@ -22,52 +22,71 @@ import { CustomKeymap } from "src/ui/extensions/keymap";
 import { CustomQuoteExtension } from "src/ui/extensions/quote";
 
 import { DeleteImage } from "src/types/delete-image";
-import { IMentionSuggestion } from "src/types/mention-suggestion";
+import { IMentionHighlight, IMentionSuggestion } from "src/types/mention-suggestion";
 import { RestoreImage } from "src/types/restore-image";
 import { CustomLinkExtension } from "src/ui/extensions/custom-link";
-import { CustomCodeInlineExtension } from "./code-inline";
+import { CustomCodeInlineExtension } from "src/ui/extensions/code-inline";
+import { CustomTypographyExtension } from "src/ui/extensions/typography";
+import { CustomHorizontalRule } from "src/ui/extensions/horizontal-rule/horizontal-rule";
+import { CustomCodeMarkPlugin } from "src/ui/extensions/custom-code-inline/inline-code-plugin";
+import { UploadImage } from "src/types/upload-image";
+import { DropHandlerExtension } from "src/ui/extensions/drop";
 
-export const CoreEditorExtensions = (
+type TArguments = {
   mentionConfig: {
-    mentionSuggestions: IMentionSuggestion[];
-    mentionHighlights: string[];
-  },
-  deleteFile: DeleteImage,
-  restoreFile: RestoreImage,
-  cancelUploadImage?: () => any
-) => [
+    mentionSuggestions?: () => Promise<IMentionSuggestion[]>;
+    mentionHighlights?: () => Promise<IMentionHighlight[]>;
+  };
+  fileConfig: {
+    deleteFile: DeleteImage;
+    restoreFile: RestoreImage;
+    cancelUploadImage?: () => void;
+    uploadFile: UploadImage;
+  };
+  placeholder?: string | ((isFocused: boolean, value: string) => string);
+  tabIndex?: number;
+};
+
+export const CoreEditorExtensions = ({
+  mentionConfig,
+  fileConfig: { deleteFile, restoreFile, cancelUploadImage, uploadFile },
+  placeholder,
+  tabIndex,
+}: TArguments) => [
   StarterKit.configure({
     bulletList: {
       HTMLAttributes: {
-        class: "list-disc list-outside leading-3 -mt-2",
+        class: "list-disc pl-7 space-y-2",
       },
     },
     orderedList: {
       HTMLAttributes: {
-        class: "list-decimal list-outside leading-3 -mt-2",
+        class: "list-decimal pl-7 space-y-2",
       },
     },
     listItem: {
       HTMLAttributes: {
-        class: "leading-normal -mb-2",
+        class: "not-prose space-y-2",
       },
     },
     code: false,
     codeBlock: false,
-    horizontalRule: {
-      HTMLAttributes: { class: "mt-4 mb-4" },
-    },
+    horizontalRule: false,
     blockquote: false,
     dropcursor: {
       color: "rgba(var(--color-text-100))",
-      width: 2,
+      width: 1,
     },
   }),
-  CustomQuoteExtension.configure({
-    HTMLAttributes: { className: "border-l-4 border-custom-border-300" },
+  CustomQuoteExtension,
+  DropHandlerExtension(uploadFile),
+  CustomHorizontalRule.configure({
+    HTMLAttributes: {
+      class: "my-4 border-custom-border-400",
+    },
   }),
   CustomKeymap,
-  ListKeymap,
+  ListKeymap({ tabIndex }),
   CustomLinkExtension.configure({
     openOnClick: true,
     autolink: true,
@@ -79,35 +98,63 @@ export const CoreEditorExtensions = (
         "text-custom-primary-300 underline underline-offset-[3px] hover:text-custom-primary-500 transition-colors cursor-pointer",
     },
   }),
+  CustomTypographyExtension,
   ImageExtension(deleteFile, restoreFile, cancelUploadImage).configure({
     HTMLAttributes: {
-      class: "rounded-lg border border-custom-border-300",
+      class: "rounded-md",
     },
   }),
   TiptapUnderline,
   TextStyle,
-  Color,
   TaskList.configure({
     HTMLAttributes: {
-      class: "not-prose pl-2",
+      class: "not-prose pl-2 space-y-2",
     },
   }),
   TaskItem.configure({
     HTMLAttributes: {
-      class: "flex items-start my-4",
+      class: "relative",
     },
     nested: true,
   }),
-  CustomCodeBlockExtension,
+  CustomCodeBlockExtension.configure({
+    HTMLAttributes: {
+      class: "",
+    },
+  }),
+  CustomCodeMarkPlugin,
   CustomCodeInlineExtension,
   Markdown.configure({
     html: true,
-    transformCopiedText: true,
     transformPastedText: true,
   }),
   Table,
   TableHeader,
   TableCell,
   TableRow,
-  Mentions(mentionConfig.mentionSuggestions, mentionConfig.mentionHighlights, false),
+  Mentions({
+    mentionSuggestions: mentionConfig.mentionSuggestions,
+    mentionHighlights: mentionConfig.mentionHighlights,
+    readonly: false,
+  }),
+  Placeholder.configure({
+    placeholder: ({ editor, node }) => {
+      if (node.type.name === "heading") return `Heading ${node.attrs.level}`;
+
+      if (editor.storage.image.uploadInProgress) return "";
+
+      const shouldHidePlaceholder =
+        editor.isActive("table") || editor.isActive("codeBlock") || editor.isActive("image");
+
+      if (shouldHidePlaceholder) return "";
+
+      if (placeholder) {
+        if (typeof placeholder === "string") return placeholder;
+        else return placeholder(editor.isFocused, editor.getHTML());
+      }
+
+      return "Press '/' for commands...";
+    },
+    includeChildren: true,
+  }),
 ];

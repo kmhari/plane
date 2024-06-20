@@ -1,24 +1,21 @@
-import { useRouter } from "next/router";
-import { observer } from "mobx-react-lite";
+import isEmpty from "lodash/isEmpty";
 import isEqual from "lodash/isEqual";
-// hooks
-import { useIssues, useLabel, useProjectState, useProjectView } from "hooks/store";
-// components
-import { AppliedFiltersList } from "components/issues";
-// ui
-import { Button } from "@plane/ui";
-// types
+import { observer } from "mobx-react";
+import { useRouter } from "next/router";
 import { IIssueFilterOptions } from "@plane/types";
-import { EIssueFilterType, EIssuesStoreType } from "constants/issue";
+// hooks
+import { Button } from "@plane/ui";
+import { AppliedFiltersList } from "@/components/issues";
+import { EIssueFilterType, EIssuesStoreType } from "@/constants/issue";
+import { useIssues, useLabel, useProjectState, useProjectView } from "@/hooks/store";
+// components
+// ui
+// types
 
 export const ProjectViewAppliedFiltersRoot: React.FC = observer(() => {
   // router
   const router = useRouter();
-  const { workspaceSlug, projectId, viewId } = router.query as {
-    workspaceSlug: string;
-    projectId: string;
-    viewId: string;
-  };
+  const { workspaceSlug, projectId, viewId } = router.query;
   // store hooks
   const {
     issuesFilter: { issueFilters, updateFilters },
@@ -39,16 +36,16 @@ export const ProjectViewAppliedFiltersRoot: React.FC = observer(() => {
   });
 
   const handleRemoveFilter = (key: keyof IIssueFilterOptions, value: string | null) => {
-    if (!workspaceSlug || !projectId) return;
+    if (!workspaceSlug || !projectId || !viewId) return;
     if (!value) {
       updateFilters(
-        workspaceSlug,
-        projectId,
+        workspaceSlug.toString(),
+        projectId.toString(),
         EIssueFilterType.FILTERS,
         {
           [key]: null,
         },
-        viewId
+        viewId.toString()
       );
       return;
     }
@@ -57,28 +54,35 @@ export const ProjectViewAppliedFiltersRoot: React.FC = observer(() => {
     newValues = newValues.filter((val) => val !== value);
 
     updateFilters(
-      workspaceSlug,
-      projectId,
+      workspaceSlug.toString(),
+      projectId.toString(),
       EIssueFilterType.FILTERS,
       {
         [key]: newValues,
       },
-      viewId
+      viewId.toString()
     );
   };
 
   const handleClearAllFilters = () => {
-    if (!workspaceSlug || !projectId) return;
+    if (!workspaceSlug || !projectId || !viewId) return;
     const newFilters: IIssueFilterOptions = {};
     Object.keys(userFilters ?? {}).forEach((key) => {
-      newFilters[key as keyof IIssueFilterOptions] = null;
+      newFilters[key as keyof IIssueFilterOptions] = [];
     });
-    updateFilters(workspaceSlug, projectId, EIssueFilterType.FILTERS, { ...newFilters }, viewId);
+    updateFilters(
+      workspaceSlug.toString(),
+      projectId.toString(),
+      EIssueFilterType.FILTERS,
+      { ...newFilters },
+      viewId.toString()
+    );
   };
 
-  const areFiltersEqual = isEqual(appliedFilters, viewDetails?.filters);
+  const areFiltersEqual = isEqual(appliedFilters ?? {}, viewDetails?.filters ?? {});
+
   // return if no filters are applied
-  if (!appliedFilters && areFiltersEqual) return null;
+  if (isEmpty(appliedFilters) && areFiltersEqual) return null;
 
   const handleUpdateView = () => {
     if (!workspaceSlug || !projectId || !viewId || !viewDetails) return;
@@ -91,25 +95,24 @@ export const ProjectViewAppliedFiltersRoot: React.FC = observer(() => {
   };
 
   return (
-    <div className="flex items-center justify-between gap-4 p-4">
-      <AppliedFiltersList
-        appliedFilters={appliedFilters ?? {}}
-        handleClearAllFilters={handleClearAllFilters}
-        handleRemoveFilter={handleRemoveFilter}
-        labels={projectLabels ?? []}
-        states={projectStates}
-        alwaysAllowEditing
-      />
+    <div className="flex justify-between gap-4 p-4">
+      <div>
+        <AppliedFiltersList
+          appliedFilters={appliedFilters ?? {}}
+          handleClearAllFilters={handleClearAllFilters}
+          handleRemoveFilter={handleRemoveFilter}
+          labels={projectLabels ?? []}
+          states={projectStates}
+          alwaysAllowEditing
+        />
+      </div>
 
       {!areFiltersEqual && (
-        <>
-          <div />
-          <div className="flex flex-shrink-0 items-center justify-center">
-            <Button variant="primary" size="sm" onClick={handleUpdateView}>
-              Update view
-            </Button>
-          </div>
-        </>
+        <div>
+          <Button variant="primary" size="sm" className="flex-shrink-0" onClick={handleUpdateView}>
+            Update view
+          </Button>
+        </div>
       )}
     </div>
   );

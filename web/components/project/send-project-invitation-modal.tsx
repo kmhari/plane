@@ -1,17 +1,18 @@
 import React, { useEffect } from "react";
+import { observer } from "mobx-react";
 import { useRouter } from "next/router";
-import { observer } from "mobx-react-lite";
 import { useForm, Controller, useFieldArray } from "react-hook-form";
-import { Dialog, Transition } from "@headlessui/react";
 import { ChevronDown, Plus, X } from "lucide-react";
+import { Dialog, Transition } from "@headlessui/react";
 // hooks
-import { useApplication, useMember, useUser, useWorkspace } from "hooks/store";
-import useToast from "hooks/use-toast";
 // ui
-import { Avatar, Button, CustomSelect, CustomSearchSelect } from "@plane/ui";
+import { Avatar, Button, CustomSelect, CustomSearchSelect, TOAST_TYPE, setToast } from "@plane/ui";
+// helpers
+import { PROJECT_MEMBER_ADDED } from "@/constants/event-tracker";
+import { EUserProjectRoles } from "@/constants/project";
+import { ROLE } from "@/constants/workspace";
+import { useEventTracker, useMember, useUser } from "@/hooks/store";
 // constants
-import { ROLE } from "constants/workspace";
-import { EUserProjectRoles } from "constants/project";
 
 type Props = {
   isOpen: boolean;
@@ -42,16 +43,11 @@ export const SendProjectInvitationModal: React.FC<Props> = observer((props) => {
   // router
   const router = useRouter();
   const { workspaceSlug, projectId } = router.query;
-  // toast alert
-  const { setToastAlert } = useToast();
   // store hooks
-  const {
-    eventTracker: { postHogEventTracker },
-  } = useApplication();
+  const { captureEvent } = useEventTracker();
   const {
     membership: { currentProjectRole },
   } = useUser();
-  const { currentWorkspace } = useWorkspace();
   const {
     project: { projectMemberIds, bulkAddMembersToProject },
     workspace: { workspaceMemberIds, getWorkspaceMemberDetails },
@@ -81,40 +77,31 @@ export const SendProjectInvitationModal: React.FC<Props> = observer((props) => {
     const payload = { ...formData };
 
     await bulkAddMembersToProject(workspaceSlug.toString(), projectId.toString(), payload)
-      .then((res) => {
+      .then(() => {
         if (onSuccess) onSuccess();
         onClose();
-        setToastAlert({
-          title: "Success",
-          type: "success",
+        setToast({
+          title: "Success!",
+          type: TOAST_TYPE.SUCCESS,
           message: "Members added successfully.",
         });
-        postHogEventTracker(
-          "MEMBER_ADDED",
-          {
-            ...res,
-            state: "SUCCESS",
-          },
-          {
-            isGrouping: true,
-            groupType: "Workspace_metrics",
-            groupId: currentWorkspace?.id!,
-          }
-        );
+        captureEvent(PROJECT_MEMBER_ADDED, {
+          members: [
+            ...payload.members.map((member) => ({
+              member_id: member.member_id,
+              role: ROLE[member.role],
+            })),
+          ],
+          state: "SUCCESS",
+          element: "Project settings members page",
+        });
       })
       .catch((error) => {
         console.error(error);
-        postHogEventTracker(
-          "MEMBER_ADDED",
-          {
-            state: "FAILED",
-          },
-          {
-            isGrouping: true,
-            groupType: "Workspace_metrics",
-            groupId: currentWorkspace?.id!,
-          }
-        );
+        captureEvent(PROJECT_MEMBER_ADDED, {
+          state: "FAILED",
+          element: "Project settings members page",
+        });
       })
       .finally(() => {
         reset(defaultValues);
@@ -148,23 +135,36 @@ export const SendProjectInvitationModal: React.FC<Props> = observer((props) => {
     }
   }, [fields, append]);
 
-  const options = uninvitedPeople?.map((userId) => {
-    const memberDetails = getWorkspaceMemberDetails(userId);
+  const options = uninvitedPeople
+    ?.map((userId) => {
+      const memberDetails = getWorkspaceMemberDetails(userId);
 
-    return {
-      value: `${memberDetails?.member.id}`,
-      query: `${memberDetails?.member.first_name} ${
-        memberDetails?.member.last_name
-      } ${memberDetails?.member.display_name.toLowerCase()}`,
-      content: (
-        <div className="flex items-center gap-2">
-          <Avatar name={memberDetails?.member.display_name} src={memberDetails?.member.avatar} />
-          {memberDetails?.member.display_name} (
-          {memberDetails?.member.first_name + " " + memberDetails?.member.last_name})
-        </div>
-      ),
-    };
-  });
+      if (!memberDetails?.member) return;
+      return {
+        value: `${memberDetails?.member.id}`,
+        query: `${memberDetails?.member.first_name} ${
+          memberDetails?.member.last_name
+        } ${memberDetails?.member.display_name.toLowerCase()}`,
+        content: (
+          <div className="flex w-full items-center gap-2">
+            <div className="flex-shrink-0 pt-0.5">
+              <Avatar name={memberDetails?.member.display_name} src={memberDetails?.member.avatar} />
+            </div>
+            <div className="truncate">
+              {memberDetails?.member.display_name} (
+              {memberDetails?.member.first_name + " " + memberDetails?.member.last_name})
+            </div>
+          </div>
+        ),
+      };
+    })
+    .filter((option) => !!option) as
+    | {
+        value: string;
+        query: string;
+        content: React.JSX.Element;
+      }[]
+    | undefined;
 
   return (
     <Transition.Root show={isOpen} as={React.Fragment}>
@@ -204,15 +204,17 @@ export const SendProjectInvitationModal: React.FC<Props> = observer((props) => {
 
                     <div className="mb-3 space-y-4">
                       {fields.map((field, index) => (
-                        <div key={field.id} className="group mb-1 grid grid-cols-12 items-start gap-x-4 text-sm">
-                          <div className="col-span-7 flex flex-col gap-1">
+                        <div
+                          key={field.id}
+                          className="group mb-1 flex items-center justify-between gap-x-4 text-sm w-full"
+                        >
+                          <div className="flex flex-col gap-1 flex-grow w-full">
                             <Controller
                               control={control}
                               name={`members.${index}.member_id`}
                               rules={{ required: "Please select a member" }}
                               render={({ field: { value, onChange } }) => {
                                 const selectedMember = getWorkspaceMemberDetails(value);
-
                                 return (
                                   <CustomSearchSelect
                                     value={value}
@@ -248,8 +250,8 @@ export const SendProjectInvitationModal: React.FC<Props> = observer((props) => {
                             )}
                           </div>
 
-                          <div className="col-span-5 flex items-center justify-between gap-2">
-                            <div className="flex w-full flex-col gap-1">
+                          <div className="flex items-center justify-between gap-2 flex-shrink-0 ">
+                            <div className="flex flex-col gap-1">
                               <Controller
                                 name={`members.${index}.role`}
                                 control={control}
@@ -258,7 +260,7 @@ export const SendProjectInvitationModal: React.FC<Props> = observer((props) => {
                                   <CustomSelect
                                     {...field}
                                     customButton={
-                                      <div className="flex w-full items-center justify-between gap-1 rounded-md border border-custom-border-200 px-3 py-2.5 text-left text-sm text-custom-text-200 shadow-sm duration-300 hover:bg-custom-background-80 hover:text-custom-text-100 focus:outline-none">
+                                      <div className="flex w-24 items-center justify-between gap-1 rounded-md border border-custom-border-200 px-3 py-2.5 text-left text-sm text-custom-text-200 shadow-sm duration-300 hover:bg-custom-background-80 hover:text-custom-text-100 focus:outline-none">
                                         <span className="capitalize">
                                           {field.value ? ROLE[field.value] : "Select role"}
                                         </span>
@@ -286,8 +288,9 @@ export const SendProjectInvitationModal: React.FC<Props> = observer((props) => {
                                 </span>
                               )}
                             </div>
-                            <div className="flex-item flex w-6">
-                              {fields.length > 1 && (
+
+                            {fields.length > 1 && (
+                              <div className="flex-item flex w-6">
                                 <button
                                   type="button"
                                   className="place-items-center self-center rounded"
@@ -295,8 +298,8 @@ export const SendProjectInvitationModal: React.FC<Props> = observer((props) => {
                                 >
                                   <X className="h-4 w-4 text-custom-text-200" />
                                 </button>
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}

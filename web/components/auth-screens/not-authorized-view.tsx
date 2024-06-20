@@ -1,12 +1,12 @@
 import React from "react";
-import Link from "next/link";
+import { observer } from "mobx-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/router";
-import { observer } from "mobx-react-lite";
 // hooks
-import { useUser } from "hooks/store";
+import { useUser } from "@/hooks/store";
 // layouts
-import DefaultLayout from "layouts/default-layout";
+import DefaultLayout from "@/layouts/default-layout";
 // images
 import ProjectNotAuthorizedImg from "public/auth/project-not-authorized.svg";
 import WorkspaceNotAuthorizedImg from "public/auth/workspace-not-authorized.svg";
@@ -18,9 +18,11 @@ type Props = {
 
 export const NotAuthorizedView: React.FC<Props> = observer((props) => {
   const { actionButton, type } = props;
-  const { currentUser } = useUser();
+  // router
   const { query } = useRouter();
   const { next_path } = query;
+  // hooks
+  const { data: currentUser } = useUser();
 
   return (
     <DefaultLayout>

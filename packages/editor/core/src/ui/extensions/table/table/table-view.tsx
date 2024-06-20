@@ -81,53 +81,75 @@ const defaultTippyOptions: Partial<Props> = {
   placement: "right",
 };
 
-function setCellsBackgroundColor(editor: Editor, backgroundColor: string) {
+function setCellsBackgroundColor(editor: Editor, color: { backgroundColor: string; textColor: string }) {
   return editor
     .chain()
     .focus()
     .updateAttributes("tableCell", {
-      background: backgroundColor,
-    })
-    .updateAttributes("tableHeader", {
-      background: backgroundColor,
+      background: color.backgroundColor,
+      textColor: color.textColor,
     })
     .run();
 }
 
+function setTableRowBackgroundColor(editor: Editor, color: { backgroundColor: string; textColor: string }) {
+  const { state, dispatch } = editor.view;
+  const { selection } = state;
+  if (!(selection instanceof CellSelection)) {
+    return false;
+  }
+
+  // Get the position of the hovered cell in the selection to determine the row.
+  const hoveredCell = selection.$headCell || selection.$anchorCell;
+
+  // Find the depth of the table row node
+  let rowDepth = hoveredCell.depth;
+  while (rowDepth > 0 && hoveredCell.node(rowDepth).type.name !== "tableRow") {
+    rowDepth--;
+  }
+
+  // If we couldn't find a tableRow node, we can't set the background color
+  if (hoveredCell.node(rowDepth).type.name !== "tableRow") {
+    return false;
+  }
+
+  // Get the position where the table row starts
+  const rowStartPos = hoveredCell.start(rowDepth);
+
+  // Create a transaction that sets the background color on the tableRow node.
+  const tr = state.tr.setNodeMarkup(rowStartPos - 1, null, {
+    ...hoveredCell.node(rowDepth).attrs,
+    background: color.backgroundColor,
+    textColor: color.textColor,
+  });
+
+  dispatch(tr);
+  return true;
+}
+
 const columnsToolboxItems: ToolboxItem[] = [
   {
-    label: "Add Column Before",
+    label: "Toggle column header",
+    icon: icons.toggleColumnHeader,
+    action: ({ editor }: { editor: Editor }) => editor.chain().focus().toggleHeaderColumn().run(),
+  },
+  {
+    label: "Add column before",
     icon: icons.insertLeftTableIcon,
     action: ({ editor }: { editor: Editor }) => editor.chain().focus().addColumnBefore().run(),
   },
   {
-    label: "Add Column After",
+    label: "Add column after",
     icon: icons.insertRightTableIcon,
     action: ({ editor }: { editor: Editor }) => editor.chain().focus().addColumnAfter().run(),
   },
   {
-    label: "Pick Column Color",
-    icon: icons.colorPicker,
-    action: ({
-      editor,
-      triggerButton,
-      controlsContainer,
-    }: {
-      editor: Editor;
-      triggerButton: HTMLElement;
-      controlsContainer: Element;
-    }) => {
-      createColorPickerToolbox({
-        triggerButton,
-        tippyOptions: {
-          appendTo: controlsContainer,
-        },
-        onSelectColor: (color) => setCellsBackgroundColor(editor, color),
-      });
-    },
+    label: "Pick color",
+    icon: "", // No icon needed for color picker
+    action: (args: any) => {}, // Placeholder action; actual color picking is handled in `createToolbox`
   },
   {
-    label: "Delete Column",
+    label: "Delete column",
     icon: icons.deleteColumn,
     action: ({ editor }: { editor: Editor }) => editor.chain().focus().deleteColumn().run(),
   },
@@ -135,38 +157,27 @@ const columnsToolboxItems: ToolboxItem[] = [
 
 const rowsToolboxItems: ToolboxItem[] = [
   {
-    label: "Add Row Above",
+    label: "Toggle row header",
+    icon: icons.toggleRowHeader,
+    action: ({ editor }: { editor: Editor }) => editor.chain().focus().toggleHeaderRow().run(),
+  },
+  {
+    label: "Add row above",
     icon: icons.insertTopTableIcon,
     action: ({ editor }: { editor: Editor }) => editor.chain().focus().addRowBefore().run(),
   },
   {
-    label: "Add Row Below",
+    label: "Add row below",
     icon: icons.insertBottomTableIcon,
     action: ({ editor }: { editor: Editor }) => editor.chain().focus().addRowAfter().run(),
   },
   {
-    label: "Pick Row Color",
-    icon: icons.colorPicker,
-    action: ({
-      editor,
-      triggerButton,
-      controlsContainer,
-    }: {
-      editor: Editor;
-      triggerButton: HTMLButtonElement;
-      controlsContainer: Element | "parent" | ((ref: Element) => Element) | undefined;
-    }) => {
-      createColorPickerToolbox({
-        triggerButton,
-        tippyOptions: {
-          appendTo: controlsContainer,
-        },
-        onSelectColor: (color) => setCellsBackgroundColor(editor, color),
-      });
-    },
+    label: "Pick color",
+    icon: "",
+    action: (args: any) => {}, // Placeholder action; actual color picking is handled in `createToolbox`
   },
   {
-    label: "Delete Row",
+    label: "Delete row",
     icon: icons.deleteRow,
     action: ({ editor }: { editor: Editor }) => editor.chain().focus().deleteRow().run(),
   },
@@ -176,107 +187,69 @@ function createToolbox({
   triggerButton,
   items,
   tippyOptions,
+  onSelectColor,
   onClickItem,
+  colors,
 }: {
   triggerButton: Element | null;
   items: ToolboxItem[];
   tippyOptions: any;
   onClickItem: (item: ToolboxItem) => void;
+  onSelectColor: (color: { backgroundColor: string; textColor: string }) => void;
+  colors: { [key: string]: { backgroundColor: string; textColor: string; icon?: string } };
 }): Instance<Props> {
   // @ts-expect-error
   const toolbox = tippy(triggerButton, {
     content: h(
       "div",
-      { className: "tableToolbox" },
-      items.map((item) =>
-        h(
-          "div",
-          {
-            className: "toolboxItem",
-            itemType: "button",
-            onClick() {
-              onClickItem(item);
+      {
+        className:
+          "rounded-md border-[0.5px] border-custom-border-300 bg-custom-background-100 px-2 py-2.5 text-xs shadow-custom-shadow-rg min-w-[12rem] whitespace-nowrap",
+      },
+      items.map((item) => {
+        if (item.label === "Pick color") {
+          return h("div", { className: "flex flex-col" }, [
+            h("hr", { className: "my-2 border-custom-border-200" }),
+            h("div", { className: "text-custom-text-200 text-sm" }, item.label),
+            h(
+              "div",
+              { className: "grid grid-cols-6 gap-x-1 gap-y-2.5 mt-2" },
+              Object.entries(colors).map(([colorName, colorValue]) =>
+                h("div", {
+                  className: "grid place-items-center size-6 rounded cursor-pointer",
+                  style: `background-color: ${colorValue.backgroundColor};color: ${colorValue.textColor || "inherit"};`,
+                  innerHTML:
+                    colorValue.icon ?? `<span class="text-md" style:"color: ${colorValue.backgroundColor}>A</span>`,
+                  onClick: () => onSelectColor(colorValue),
+                })
+              )
+            ),
+            h("hr", { className: "my-2 border-custom-border-200" }),
+          ]);
+        } else {
+          return h(
+            "div",
+            {
+              className:
+                "flex items-center gap-2 px-1 py-1.5 bg-custom-background-100 hover:bg-custom-background-80 text-sm text-custom-text-200 rounded cursor-pointer",
+              itemType: "div",
+              onClick: () => onClickItem(item),
             },
-          },
-          [
-            h("div", {
-              className: "iconContainer",
-              innerHTML: item.icon,
-            }),
-            h("div", { className: "label" }, item.label),
-          ]
-        )
-      )
+            [
+              h("span", {
+                className: "h-3 w-3 flex-shrink-0",
+                innerHTML: item.icon,
+              }),
+              h("div", { className: "label" }, item.label),
+            ]
+          );
+        }
+      })
     ),
     ...tippyOptions,
   });
 
   return Array.isArray(toolbox) ? toolbox[0] : toolbox;
-}
-
-function createColorPickerToolbox({
-  triggerButton,
-  tippyOptions,
-  onSelectColor = () => {},
-}: {
-  triggerButton: HTMLElement;
-  tippyOptions: Partial<Props>;
-  onSelectColor?: (color: string) => void;
-}) {
-  const items = {
-    Default: "rgb(var(--color-primary-100))",
-    Orange: "#FFE5D1",
-    Grey: "#F1F1F1",
-    Yellow: "#FEF3C7",
-    Green: "#DCFCE7",
-    Red: "#FFDDDD",
-    Blue: "#D9E4FF",
-    Pink: "#FFE8FA",
-    Purple: "#E8DAFB",
-  };
-
-  const colorPicker = tippy(triggerButton, {
-    ...defaultTippyOptions,
-    content: h(
-      "div",
-      { className: "tableColorPickerToolbox" },
-      Object.entries(items).map(([key, value]) =>
-        h(
-          "div",
-          {
-            className: "toolboxItem",
-            itemType: "button",
-            onClick: () => {
-              onSelectColor(value);
-              colorPicker.hide();
-            },
-          },
-          [
-            h("div", {
-              className: "colorContainer",
-              style: {
-                backgroundColor: value,
-              },
-            }),
-            h(
-              "div",
-              {
-                className: "label",
-              },
-              key
-            ),
-          ]
-        )
-      )
-    ),
-    onHidden: (instance) => {
-      instance.destroy();
-    },
-    showOnCreate: true,
-    ...tippyOptions,
-  });
-
-  return colorPicker;
 }
 
 export class TableView implements NodeView {
@@ -323,34 +296,51 @@ export class TableView implements NodeView {
     if (editor.isEditable) {
       this.rowsControl = h(
         "div",
-        { className: "rowsControl" },
+        { className: "rows-control" },
         h("div", {
           itemType: "button",
-          className: "rowsControlDiv",
+          className: "rows-control-div",
           onClick: () => this.selectRow(),
         })
       );
 
       this.columnsControl = h(
         "div",
-        { className: "columnsControl" },
+        { className: "columns-control" },
         h("div", {
           itemType: "button",
-          className: "columnsControlDiv",
+          className: "columns-control-div",
           onClick: () => this.selectColumn(),
         })
       );
 
       this.controls = h(
         "div",
-        { className: "tableControls", contentEditable: "false" },
+        { className: "table-controls", contentEditable: "false" },
         this.rowsControl,
         this.columnsControl
       );
+      const columnColors = {
+        Blue: { backgroundColor: "#D9E4FF", textColor: "#171717" },
+        Orange: { backgroundColor: "#FFEDD5", textColor: "#171717" },
+        Grey: { backgroundColor: "#F1F1F1", textColor: "#171717" },
+        Yellow: { backgroundColor: "#FEF3C7", textColor: "#171717" },
+        Green: { backgroundColor: "#DCFCE7", textColor: "#171717" },
+        Red: { backgroundColor: "#FFDDDD", textColor: "#171717" },
+        Pink: { backgroundColor: "#FFE8FA", textColor: "#171717" },
+        Purple: { backgroundColor: "#E8DAFB", textColor: "#171717" },
+        None: {
+          backgroundColor: "none",
+          textColor: "none",
+          icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="gray" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ban"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>`,
+        },
+      };
 
       this.columnsToolbox = createToolbox({
-        triggerButton: this.columnsControl.querySelector(".columnsControlDiv"),
+        triggerButton: this.columnsControl.querySelector(".columns-control-div"),
         items: columnsToolboxItems,
+        colors: columnColors,
+        onSelectColor: (color) => setCellsBackgroundColor(this.editor, color),
         tippyOptions: {
           ...defaultTippyOptions,
           appendTo: this.controls,
@@ -368,10 +358,12 @@ export class TableView implements NodeView {
       this.rowsToolbox = createToolbox({
         triggerButton: this.rowsControl.firstElementChild,
         items: rowsToolboxItems,
+        colors: columnColors,
         tippyOptions: {
           ...defaultTippyOptions,
           appendTo: this.controls,
         },
+        onSelectColor: (color) => setTableRowBackgroundColor(editor, color),
         onClickItem: (item) => {
           item.action({
             editor: this.editor,
@@ -382,8 +374,6 @@ export class TableView implements NodeView {
         },
       });
     }
-
-    // Table
 
     this.colgroup = h(
       "colgroup",
@@ -396,7 +386,7 @@ export class TableView implements NodeView {
     this.root = h(
       "div",
       {
-        className: "tableWrapper controls--disabled",
+        className: "table-wrapper horizontal-scrollbar scrollbar-md controls--disabled",
       },
       this.controls,
       this.table
@@ -437,16 +427,19 @@ export class TableView implements NodeView {
   }
 
   updateControls() {
-    const { hoveredTable: table, hoveredCell: cell } = Object.values(this.decorations).reduce((acc, curr) => {
-      if (curr.spec.hoveredCell !== undefined) {
-        acc["hoveredCell"] = curr.spec.hoveredCell;
-      }
+    const { hoveredTable: table, hoveredCell: cell } = Object.values(this.decorations).reduce(
+      (acc, curr) => {
+        if (curr.spec.hoveredCell !== undefined) {
+          acc["hoveredCell"] = curr.spec.hoveredCell;
+        }
 
-      if (curr.spec.hoveredTable !== undefined) {
-        acc["hoveredTable"] = curr.spec.hoveredTable;
-      }
-      return acc;
-    }, {} as Record<string, HTMLElement>) as any;
+        if (curr.spec.hoveredTable !== undefined) {
+          acc["hoveredTable"] = curr.spec.hoveredTable;
+        }
+        return acc;
+      },
+      {} as Record<string, HTMLElement>
+    ) as any;
 
     if (table === undefined || cell === undefined) {
       return this.root.classList.add("controls--disabled");
@@ -457,12 +450,12 @@ export class TableView implements NodeView {
 
     const cellDom = this.editor.view.nodeDOM(cell.pos) as HTMLElement;
 
-    if (!this.table) {
+    if (!this.table || !cellDom) {
       return;
     }
 
-    const tableRect = this.table.getBoundingClientRect();
-    const cellRect = cellDom.getBoundingClientRect();
+    const tableRect = this.table?.getBoundingClientRect();
+    const cellRect = cellDom?.getBoundingClientRect();
 
     if (this.columnsControl) {
       this.columnsControl.style.left = `${cellRect.left - tableRect.left - this.table.parentElement!.scrollLeft}px`;

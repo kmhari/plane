@@ -3,7 +3,7 @@ from django.db import models
 from django.template.defaultfilters import slugify
 
 # Module imports
-from . import ProjectBaseModel
+from .project import ProjectBaseModel
 
 
 class State(ProjectBaseModel):
@@ -21,10 +21,12 @@ class State(ProjectBaseModel):
             ("started", "Started"),
             ("completed", "Completed"),
             ("cancelled", "Cancelled"),
+            ("triage", "Triage")
         ),
         default="backlog",
         max_length=20,
     )
+    is_triage = models.BooleanField(default=False)
     default = models.BooleanField(default=False)
     external_source = models.CharField(max_length=255, null=True, blank=True)
     external_id = models.CharField(max_length=255, blank=True, null=True)

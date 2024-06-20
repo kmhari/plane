@@ -12,31 +12,31 @@ export interface PaginatedUserNotification {
 }
 
 export interface IUserNotification {
-  id: string;
-  created_at: Date;
-  updated_at: Date;
+  archived_at: string | null;
+  created_at: string;
+  created_by: null;
   data: Data;
   entity_identifier: string;
   entity_name: string;
-  title: string;
+  id: string;
   message: null;
   message_html: string;
   message_stripped: null;
-  sender: string;
-  read_at: Date | null;
-  archived_at: Date | null;
-  snoozed_till: Date | null;
-  created_by: null;
-  updated_by: null;
-  workspace: string;
   project: string;
+  read_at: Date | null;
+  receiver: string;
+  sender: string;
+  snoozed_till: Date | null;
+  title: string;
   triggered_by: string;
   triggered_by_details: IUserLite;
-  receiver: string;
+  updated_at: Date;
+  updated_by: null;
+  workspace: string;
 }
 
 export interface Data {
-  issue: IIssueLite;
+  issue: INotificationIssueLite;
   issue_activity: {
     actor: string;
     field: string;
@@ -48,7 +48,7 @@ export interface Data {
   };
 }
 
-export interface IIssueLite {
+export interface INotificationIssueLite {
   id: string;
   name: string;
   identifier: string;
@@ -57,7 +57,7 @@ export interface IIssueLite {
   state_group: string;
 }
 
-export type NotificationType = "created" | "assigned" | "watching" | null;
+export type NotificationType = "created" | "assigned" | "watching" | "all";
 
 export interface INotificationParams {
   snoozed?: boolean;

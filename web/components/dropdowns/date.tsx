@@ -1,20 +1,19 @@
 import React, { useRef, useState } from "react";
-import { Combobox } from "@headlessui/react";
-import DatePicker from "react-datepicker";
+import { DayPicker, Matcher } from "react-day-picker";
 import { usePopper } from "react-popper";
 import { CalendarDays, X } from "lucide-react";
+import { Combobox } from "@headlessui/react";
+// helpers
+import { cn } from "@/helpers/common.helper";
+import { renderFormattedDate, getDate } from "@/helpers/date-time.helper";
 // hooks
-import { useDropdownKeyDown } from "hooks/use-dropdown-key-down";
-import useOutsideClickDetector from "hooks/use-outside-click-detector";
+import { useDropdown } from "@/hooks/use-dropdown";
 // components
 import { DropdownButton } from "./buttons";
-// helpers
-import { renderFormattedDate } from "helpers/date-time.helper";
-import { cn } from "helpers/common.helper";
-// types
-import { TDropdownProps } from "./types";
 // constants
 import { BUTTON_VARIANTS_WITH_TEXT } from "./constants";
+// types
+import { TDropdownProps } from "./types";
 
 type Props = TDropdownProps & {
   clearIconClassName?: string;
@@ -23,6 +22,7 @@ type Props = TDropdownProps & {
   minDate?: Date;
   maxDate?: Date;
   onChange: (val: Date | null) => void;
+  onClose?: () => void;
   value: Date | string | null;
   closeOnSelect?: boolean;
 };
@@ -42,12 +42,14 @@ export const DateDropdown: React.FC<Props> = (props) => {
     minDate,
     maxDate,
     onChange,
+    onClose,
     placeholder = "Date",
     placement,
     showTooltip = false,
     tabIndex,
     value,
   } = props;
+  // states
   const [isOpen, setIsOpen] = useState(false);
   // refs
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -73,30 +75,25 @@ export const DateDropdown: React.FC<Props> = (props) => {
     if (referenceElement) referenceElement.focus();
   };
 
-  const handleClose = () => {
-    if (isOpen) setIsOpen(false);
-    if (referenceElement) referenceElement.blur();
-  };
-
-  const toggleDropdown = () => {
-    if (!isOpen) onOpen();
-    setIsOpen((prevIsOpen) => !prevIsOpen);
-  };
+  const { handleClose, handleKeyDown, handleOnClick } = useDropdown({
+    dropdownRef,
+    isOpen,
+    onClose,
+    onOpen,
+    setIsOpen,
+  });
 
   const dropdownOnChange = (val: Date | null) => {
     onChange(val);
-    if (closeOnSelect) handleClose();
+    if (closeOnSelect) {
+      handleClose();
+      referenceElement?.blur();
+    }
   };
 
-  const handleKeyDown = useDropdownKeyDown(toggleDropdown, handleClose);
-
-  const handleOnClick = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
-    e.stopPropagation();
-    e.preventDefault();
-    toggleDropdown();
-  };
-
-  useOutsideClickDetector(dropdownRef, handleClose);
+  const disabledDays: Matcher[] = [];
+  if (minDate) disabledDays.push({ before: minDate });
+  if (maxDate) disabledDays.push({ after: maxDate });
 
   return (
     <Combobox
@@ -104,20 +101,25 @@ export const DateDropdown: React.FC<Props> = (props) => {
       ref={dropdownRef}
       tabIndex={tabIndex}
       className={cn("h-full", className)}
-      onKeyDown={handleKeyDown}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          if (!isOpen) handleKeyDown(e);
+        } else handleKeyDown(e);
+      }}
+      disabled={disabled}
     >
       <Combobox.Button as={React.Fragment}>
         <button
-          ref={setReferenceElement}
           type="button"
           className={cn(
-            "block h-full max-w-full outline-none",
+            "clickable block h-full max-w-full outline-none",
             {
               "cursor-not-allowed text-custom-text-200": disabled,
               "cursor-pointer": !disabled,
             },
             buttonContainerClassName
           )}
+          ref={setReferenceElement}
           onClick={handleOnClick}
         >
           <DropdownButton
@@ -132,11 +134,12 @@ export const DateDropdown: React.FC<Props> = (props) => {
             {BUTTON_VARIANTS_WITH_TEXT.includes(buttonVariant) && (
               <span className="flex-grow truncate">{value ? renderFormattedDate(value) : placeholder}</span>
             )}
-            {isClearable && isDateSelected && (
+            {isClearable && !disabled && isDateSelected && (
               <X
-                className={cn("h-2 w-2 flex-shrink-0", clearIconClassName)}
+                className={cn("h-2.5 w-2.5 flex-shrink-0", clearIconClassName)}
                 onClick={(e) => {
                   e.stopPropagation();
+                  e.preventDefault();
                   onChange(null);
                 }}
               />
@@ -146,15 +149,22 @@ export const DateDropdown: React.FC<Props> = (props) => {
       </Combobox.Button>
       {isOpen && (
         <Combobox.Options className="fixed z-10" static>
-          <div className="my-1" ref={setPopperElement} style={styles.popper} {...attributes.popper}>
-            <DatePicker
-              selected={value ? new Date(value) : null}
-              onChange={dropdownOnChange}
-              dateFormat="dd-MM-yyyy"
-              minDate={minDate}
-              maxDate={maxDate}
-              calendarClassName="shadow-custom-shadow-rg rounded"
-              inline
+          <div
+            className="my-1 bg-custom-background-100 shadow-custom-shadow-rg rounded-md overflow-hidden p-3"
+            ref={setPopperElement}
+            style={styles.popper}
+            {...attributes.popper}
+          >
+            <DayPicker
+              selected={getDate(value)}
+              defaultMonth={getDate(value)}
+              onSelect={(date) => {
+                dropdownOnChange(date ?? null);
+              }}
+              showOutsideDays
+              initialFocus
+              disabled={disabledDays}
+              mode="single"
             />
           </div>
         </Combobox.Options>

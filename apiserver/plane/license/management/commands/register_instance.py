@@ -1,6 +1,5 @@
 # Python imports
 import json
-import requests
 import secrets
 
 # Django imports
@@ -47,18 +46,18 @@ class Command(BaseCommand):
             }
 
             instance = Instance.objects.create(
-                instance_name="Plane Free",
+                instance_name="Plane Community Edition",
                 instance_id=secrets.token_hex(12),
                 license_key=None,
-                api_key=secrets.token_hex(8),
-                version=payload.get("version"),
+                current_version=payload.get("version"),
+                latest_version=payload.get("version"),
                 last_checked_at=timezone.now(),
                 user_count=payload.get("user_count", 0),
             )
 
-            self.stdout.write(self.style.SUCCESS(f"Instance registered"))
+            self.stdout.write(self.style.SUCCESS("Instance registered"))
         else:
             self.stdout.write(
-                self.style.SUCCESS(f"Instance already registered")
+                self.style.SUCCESS("Instance already registered")
             )
             return

@@ -1,11 +1,11 @@
 import { FC } from "react";
 import { observer } from "mobx-react";
-// hooks
-import { useIssueDetail } from "hooks/store";
+// icons
+import { Users } from "lucide-react";
+// hooks;
+import { useIssueDetail } from "@/hooks/store";
 // components
 import { IssueActivityBlockComponent, IssueLink } from "./";
-// icons
-import { UserGroupIcon } from "@plane/ui";
 
 type TIssueAssigneeActivity = { activityId: string; showIssue?: boolean; ends: "top" | "bottom" | undefined };
 
@@ -21,13 +21,12 @@ export const IssueAssigneeActivity: FC<TIssueAssigneeActivity> = observer((props
   if (!activity) return <></>;
   return (
     <IssueActivityBlockComponent
-      icon={<UserGroupIcon className="h-4 w-4 flex-shrink-0" />}
+      icon={<Users className="h-3 w-3 flex-shrink-0" />}
       activityId={activityId}
       ends={ends}
     >
       <>
         {activity.old_value === "" ? `added a new assignee ` : `removed the assignee `}
-
         <a
           href={`/${activity.workspace_detail?.slug}/profile/${activity.new_identifier ?? activity.old_identifier}`}
           target="_blank"
@@ -36,7 +35,6 @@ export const IssueAssigneeActivity: FC<TIssueAssigneeActivity> = observer((props
         >
           {activity.new_value && activity.new_value !== "" ? activity.new_value : activity.old_value}
         </a>
-
         {showIssue && (activity.old_value === "" ? ` to ` : ` from `)}
         {showIssue && <IssueLink activityId={activityId} />}.
       </>

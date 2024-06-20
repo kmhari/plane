@@ -1,44 +1,51 @@
 import { FC, useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-// hooks
-import { useApplication, useProject, useWorkspace } from "hooks/store";
-import useToast from "hooks/use-toast";
-// components
-import EmojiIconPicker from "components/emoji-icon-picker";
-import { ImagePickerPopover } from "components/core";
-import { Button, CustomSelect, Input, TextArea } from "@plane/ui";
 // icons
-import { Lock } from "lucide-react";
-// types
+import { Info, Lock } from "lucide-react";
 import { IProject, IWorkspace } from "@plane/types";
-// helpers
-import { renderEmoji } from "helpers/emoji.helper";
-import { renderFormattedDate } from "helpers/date-time.helper";
+// ui
+import {
+  Button,
+  CustomSelect,
+  Input,
+  TextArea,
+  TOAST_TYPE,
+  setToast,
+  CustomEmojiIconPicker,
+  EmojiIconPickerTypes,
+  Tooltip,
+} from "@plane/ui";
+// components
+import { Logo } from "@/components/common";
+import { ImagePickerPopover } from "@/components/core";
 // constants
-import { NETWORK_CHOICES } from "constants/project";
+import { PROJECT_UPDATED } from "@/constants/event-tracker";
+import { NETWORK_CHOICES } from "@/constants/project";
+// helpers
+import { renderFormattedDate } from "@/helpers/date-time.helper";
+// hooks
+import { convertHexEmojiToDecimal } from "@/helpers/emoji.helper";
+import { useEventTracker, useProject } from "@/hooks/store";
+import { usePlatformOS } from "@/hooks/use-platform-os";
 // services
-import { ProjectService } from "services/project";
-
+import { ProjectService } from "@/services/project";
+// types
 export interface IProjectDetailsForm {
   project: IProject;
   workspaceSlug: string;
+  projectId: string;
   isAdmin: boolean;
 }
-
 const projectService = new ProjectService();
-
 export const ProjectDetailsForm: FC<IProjectDetailsForm> = (props) => {
-  const { project, workspaceSlug, isAdmin } = props;
+  const { project, workspaceSlug, projectId, isAdmin } = props;
   // states
+  const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   // store hooks
-  const {
-    eventTracker: { postHogEventTracker },
-  } = useApplication();
-  const { currentWorkspace } = useWorkspace();
+  const { captureProjectEvent } = useEventTracker();
   const { updateProject } = useProject();
-  // toast alert
-  const { setToastAlert } = useToast();
+  const { isMobile } = usePlatformOS();
   // form info
   const {
     handleSubmit,
@@ -47,92 +54,74 @@ export const ProjectDetailsForm: FC<IProjectDetailsForm> = (props) => {
     setValue,
     setError,
     reset,
-    formState: { errors },
+    formState: { errors, dirtyFields },
+    getValues,
   } = useForm<IProject>({
     defaultValues: {
       ...project,
-      emoji_and_icon: project.emoji ?? project.icon_prop,
       workspace: (project.workspace as IWorkspace).id,
     },
   });
 
   useEffect(() => {
-    if (!project) return;
-    reset({
-      ...project,
-      emoji_and_icon: project.emoji ?? project.icon_prop,
-      workspace: (project.workspace as IWorkspace).id,
-    });
-  }, [project, reset]);
-
+    if (project && projectId !== getValues("id")) {
+      reset({
+        ...project,
+        workspace: (project.workspace as IWorkspace).id,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, projectId]);
   const handleIdentifierChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { value } = event.target;
-
     const alphanumericValue = value.replace(/[^a-zA-Z0-9]/g, "");
     const formattedValue = alphanumericValue.toUpperCase();
-
     setValue("identifier", formattedValue);
   };
-
   const handleUpdateChange = async (payload: Partial<IProject>) => {
     if (!workspaceSlug || !project) return;
-
     return updateProject(workspaceSlug.toString(), project.id, payload)
       .then((res) => {
-        postHogEventTracker(
-          "PROJECT_UPDATED",
-          { ...res, state: "SUCCESS" },
-          {
-            isGrouping: true,
-            groupType: "Workspace_metrics",
-            groupId: res.workspace,
-          }
-        );
-        setToastAlert({
-          type: "success",
+        const changed_properties = Object.keys(dirtyFields);
+
+        captureProjectEvent({
+          eventName: PROJECT_UPDATED,
+          payload: {
+            ...res,
+            changed_properties: changed_properties,
+            state: "SUCCESS",
+            element: "Project general settings",
+          },
+        });
+        setToast({
+          type: TOAST_TYPE.SUCCESS,
           title: "Success!",
           message: "Project updated successfully",
         });
       })
       .catch((error) => {
-        postHogEventTracker(
-          "PROJECT_UPDATED",
-          {
-            state: "FAILED",
-          },
-          {
-            isGrouping: true,
-            groupType: "Workspace_metrics",
-            groupId: currentWorkspace?.id!,
-          }
-        );
-        setToastAlert({
-          type: "error",
+        captureProjectEvent({
+          eventName: PROJECT_UPDATED,
+          payload: { ...payload, state: "FAILED", element: "Project general settings" },
+        });
+        setToast({
+          type: TOAST_TYPE.ERROR,
           title: "Error!",
           message: error?.error ?? "Project could not be updated. Please try again.",
         });
       });
   };
-
   const onSubmit = async (formData: IProject) => {
     if (!workspaceSlug) return;
     setIsLoading(true);
-
     const payload: Partial<IProject> = {
       name: formData.name,
       network: formData.network,
       identifier: formData.identifier,
       description: formData.description,
       cover_image: formData.cover_image,
+      logo_props: formData.logo_props,
     };
-
-    if (typeof formData.emoji_and_icon === "object") {
-      payload.emoji = null;
-      payload.icon_prop = formData.emoji_and_icon;
-    } else {
-      payload.emoji = formData.emoji_and_icon;
-      payload.icon_prop = null;
-    }
 
     if (project.identifier !== formData.identifier)
       await projectService
@@ -142,38 +131,54 @@ export const ProjectDetailsForm: FC<IProjectDetailsForm> = (props) => {
           else await handleUpdateChange(payload);
         });
     else await handleUpdateChange(payload);
-
     setTimeout(() => {
       setIsLoading(false);
     }, 300);
   };
-
   const currentNetwork = NETWORK_CHOICES.find((n) => n.key === project?.network);
-  const selectedNetwork = NETWORK_CHOICES.find((n) => n.key === watch("network"));
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
       <div className="relative mt-6 h-44 w-full">
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-
         <img src={watch("cover_image")!} alt={watch("cover_image")!} className="h-44 w-full rounded-md object-cover" />
-        <div className="absolute bottom-4 z-5 flex w-full items-end justify-between gap-3 px-4">
+        <div className="z-5 absolute bottom-4 flex w-full items-end justify-between gap-3 px-4">
           <div className="flex flex-grow gap-3 truncate">
             <div className="flex h-[52px] w-[52px] flex-shrink-0 items-center justify-center rounded-lg bg-custom-background-90">
-              <div className="grid h-7 w-7 place-items-center">
-                <Controller
-                  control={control}
-                  name="emoji_and_icon"
-                  render={({ field: { value, onChange } }) => (
-                    <EmojiIconPicker
-                      label={value ? renderEmoji(value) : "Icon"}
-                      value={value}
-                      onChange={onChange}
-                      disabled={!isAdmin}
-                    />
-                  )}
-                />
-              </div>
+              <Controller
+                control={control}
+                name="logo_props"
+                render={({ field: { value, onChange } }) => (
+                  <CustomEmojiIconPicker
+                    isOpen={isOpen}
+                    handleToggle={(val: boolean) => setIsOpen(val)}
+                    className="flex items-center justify-center"
+                    buttonClassName="flex items-center justify-center"
+                    label={<Logo logo={value} size={28} />}
+                    onChange={(val) => {
+                      let logoValue = {};
+
+                      if (val?.type === "emoji")
+                        logoValue = {
+                          value: convertHexEmojiToDecimal(val.value.unified),
+                          url: val.value.imageUrl,
+                        };
+                      else if (val?.type === "icon") logoValue = val.value;
+
+                      onChange({
+                        in_use: val?.type,
+                        [val?.type]: logoValue,
+                      });
+                      setIsOpen(false);
+                    }}
+                    defaultIconColor={value?.in_use && value.in_use === "icon" ? value?.icon?.color : undefined}
+                    defaultOpen={
+                      value.in_use && value.in_use === "emoji" ? EmojiIconPickerTypes.EMOJI : EmojiIconPickerTypes.ICON
+                    }
+                    disabled={!isAdmin}
+                  />
+                )}
+              />
             </div>
             <div className="flex flex-col gap-1 truncate text-white">
               <span className="truncate text-lg font-semibold">{watch("name")}</span>
@@ -186,7 +191,6 @@ export const ProjectDetailsForm: FC<IProjectDetailsForm> = (props) => {
               </span>
             </div>
           </div>
-
           <div className="flex flex-shrink-0 justify-center">
             <div>
               <Controller
@@ -214,6 +218,10 @@ export const ProjectDetailsForm: FC<IProjectDetailsForm> = (props) => {
             name="name"
             rules={{
               required: "Name is required",
+              maxLength: {
+                value: 255,
+                message: "Project name should be less than 255 characters",
+              },
             }}
             render={({ field: { value, onChange, ref } }) => (
               <Input
@@ -230,8 +238,8 @@ export const ProjectDetailsForm: FC<IProjectDetailsForm> = (props) => {
               />
             )}
           />
+          <span className="text-xs text-red-500">{errors?.name?.message}</span>
         </div>
-
         <div className="flex flex-col gap-1">
           <h4 className="text-sm">Description</h4>
           <Controller
@@ -251,68 +259,101 @@ export const ProjectDetailsForm: FC<IProjectDetailsForm> = (props) => {
             )}
           />
         </div>
-
-        <div className="flex w-full items-center justify-between gap-10">
+        <div className="flex w-full justify-between gap-10">
           <div className="flex w-1/2 flex-col gap-1">
-            <h4 className="text-sm">Identifier</h4>
-            <Controller
-              control={control}
-              name="identifier"
-              rules={{
-                required: "Identifier is required",
-                validate: (value) => /^[A-Z0-9]+$/.test(value.toUpperCase()) || "Identifier must be in uppercase.",
-                minLength: {
-                  value: 1,
-                  message: "Identifier must at least be of 1 character",
-                },
-                maxLength: {
-                  value: 12,
-                  message: "Identifier must at most be of 5 characters",
-                },
-              }}
-              render={({ field: { value, ref } }) => (
-                <Input
-                  id="identifier"
-                  name="identifier"
-                  type="text"
-                  value={value}
-                  onChange={handleIdentifierChange}
-                  ref={ref}
-                  hasError={Boolean(errors.identifier)}
-                  placeholder="Enter identifier"
-                  className="w-full font-medium"
-                  disabled={!isAdmin}
-                />
-              )}
-            />
+            <h4 className="text-sm">Project ID</h4>
+            <div className="relative">
+              <Controller
+                control={control}
+                name="identifier"
+                rules={{
+                  required: "Project ID is required",
+                  validate: (value) =>
+                    /^[ÇŞĞIİÖÜA-Z0-9]+$/.test(value.toUpperCase()) ||
+                    "Only Alphanumeric & Non-latin characters are allowed.",
+                  minLength: {
+                    value: 1,
+                    message: "Project ID must at least be of 1 character",
+                  },
+                  maxLength: {
+                    value: 5,
+                    message: "Project ID must at most be of 5 characters",
+                  },
+                }}
+                render={({ field: { value, ref } }) => (
+                  <Input
+                    id="identifier"
+                    name="identifier"
+                    type="text"
+                    value={value}
+                    onChange={handleIdentifierChange}
+                    ref={ref}
+                    hasError={Boolean(errors.identifier)}
+                    placeholder="Enter Project ID"
+                    className="w-full font-medium"
+                    disabled={!isAdmin}
+                  />
+                )}
+              />
+              <Tooltip
+                isMobile={isMobile}
+                tooltipContent="Helps you identify issues in the project uniquely, (e.g. APP-123). Max 5 characters."
+                className="text-sm"
+                position="right-top"
+              >
+                <Info className="absolute right-2 top-2.5 h-4 w-4 text-custom-text-400" />
+              </Tooltip>
+            </div>
+            <span className="text-xs text-red-500">
+              <>{errors?.identifier?.message}</>
+            </span>
           </div>
-
           <div className="flex w-1/2 flex-col gap-1">
             <h4 className="text-sm">Network</h4>
             <Controller
               name="network"
               control={control}
-              render={({ field: { value, onChange } }) => (
-                <CustomSelect
-                  value={value}
-                  onChange={onChange}
-                  label={selectedNetwork?.label ?? "Select network"}
-                  buttonClassName="!border-custom-border-200 !shadow-none font-medium rounded-md"
-                  input
-                  disabled={!isAdmin}
-                  optionsClassName="w-full"
-                >
-                  {NETWORK_CHOICES.map((network) => (
-                    <CustomSelect.Option key={network.key} value={network.key}>
-                      {network.label}
-                    </CustomSelect.Option>
-                  ))}
-                </CustomSelect>
-              )}
+              render={({ field: { value, onChange } }) => {
+                const selectedNetwork = NETWORK_CHOICES.find((n) => n.key === value);
+
+                return (
+                  <CustomSelect
+                    value={value}
+                    onChange={onChange}
+                    label={
+                      <div className="flex items-center gap-1">
+                        {selectedNetwork ? (
+                          <>
+                            <selectedNetwork.icon className="h-3.5 w-3.5" />
+                            {selectedNetwork.label}
+                          </>
+                        ) : (
+                          <span className="text-custom-text-400">Select network</span>
+                        )}
+                      </div>
+                    }
+                    buttonClassName="!border-custom-border-200 !shadow-none font-medium rounded-md"
+                    input
+                    disabled={!isAdmin}
+                    // optionsClassName="w-full"
+                  >
+                    {NETWORK_CHOICES.map((network) => (
+                      <CustomSelect.Option key={network.key} value={network.key}>
+                        <div className="flex items-start gap-2">
+                          <network.icon className="h-3.5 w-3.5" />
+                          <div className="-mt-1">
+                            <p>{network.label}</p>
+                            <p className="text-xs text-custom-text-400">{network.description}</p>
+                          </div>
+                        </div>
+                      </CustomSelect.Option>
+                    ))}
+                  </CustomSelect>
+                );
+              }}
             />
           </div>
         </div>
-
         <div className="flex items-center justify-between py-2">
           <>
             <Button variant="primary" type="submit" loading={isLoading} disabled={!isAdmin}>

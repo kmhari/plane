@@ -1,118 +1,108 @@
-import { FC, useCallback } from "react";
-import { useRouter } from "next/router";
+import { FC } from "react";
 import { observer } from "mobx-react-lite";
-import { DragDropContext, DropResult } from "@hello-pangea/dnd";
+import { useRouter } from "next/router";
+import { TGroupedIssues } from "@plane/types";
 // components
-import { CalendarChart } from "components/issues";
+import { TOAST_TYPE, setToast } from "@plane/ui";
+import { CalendarChart } from "@/components/issues";
 // hooks
-import useToast from "hooks/use-toast";
+import { EIssuesStoreType } from "@/constants/issue";
+import { EUserProjectRoles } from "@/constants/project";
+import { useIssues, useUser } from "@/hooks/store";
+import { useIssuesActions } from "@/hooks/use-issues-actions";
+// ui
 // types
-import { TGroupedIssues, TIssue } from "@plane/types";
 import { IQuickActionProps } from "../list/list-view-types";
-import { EIssueActions } from "../types";
 import { handleDragDrop } from "./utils";
-import { useIssues } from "hooks/store";
-import { ICycleIssues, ICycleIssuesFilter } from "store/issue/cycle";
-import { IModuleIssues, IModuleIssuesFilter } from "store/issue/module";
-import { IProjectIssues, IProjectIssuesFilter } from "store/issue/project";
-import { IProjectViewIssues, IProjectViewIssuesFilter } from "store/issue/project-views";
+
+type CalendarStoreType =
+  | EIssuesStoreType.PROJECT
+  | EIssuesStoreType.MODULE
+  | EIssuesStoreType.CYCLE
+  | EIssuesStoreType.PROJECT_VIEW;
 
 interface IBaseCalendarRoot {
-  issueStore: IProjectIssues | IModuleIssues | ICycleIssues | IProjectViewIssues;
-  issuesFilterStore: IProjectIssuesFilter | IModuleIssuesFilter | ICycleIssuesFilter | IProjectViewIssuesFilter;
   QuickActions: FC<IQuickActionProps>;
-  issueActions: {
-    [EIssueActions.DELETE]: (issue: TIssue) => Promise<void>;
-    [EIssueActions.UPDATE]?: (issue: TIssue) => Promise<void>;
-    [EIssueActions.REMOVE]?: (issue: TIssue) => Promise<void>;
-  };
+  storeType: CalendarStoreType;
+  addIssuesToView?: (issueIds: string[]) => Promise<any>;
   viewId?: string;
+  isCompletedCycle?: boolean;
 }
 
 export const BaseCalendarRoot = observer((props: IBaseCalendarRoot) => {
-  const { issueStore, issuesFilterStore, QuickActions, issueActions, viewId } = props;
+  const { QuickActions, storeType, addIssuesToView, viewId, isCompletedCycle = false } = props;
 
   // router
   const router = useRouter();
   const { workspaceSlug, projectId } = router.query;
 
   // hooks
-  const { setToastAlert } = useToast();
-  const { issueMap } = useIssues();
+  const {
+    membership: { currentProjectRole },
+  } = useUser();
+  const { issues, issuesFilter, issueMap } = useIssues(storeType);
+  const { updateIssue, removeIssue, removeIssueFromView, archiveIssue, restoreIssue, updateFilters } =
+    useIssuesActions(storeType);
 
-  const displayFilters = issuesFilterStore.issueFilters?.displayFilters;
+  const isEditingAllowed = !!currentProjectRole && currentProjectRole >= EUserProjectRoles.MEMBER;
 
-  const groupedIssueIds = (issueStore.groupedIssueIds ?? {}) as TGroupedIssues;
+  const displayFilters = issuesFilter.issueFilters?.displayFilters;
 
-  const onDragEnd = async (result: DropResult) => {
-    if (!result) return;
+  const groupedIssueIds = (issues.groupedIssueIds ?? {}) as TGroupedIssues;
 
-    // return if not dropped on the correct place
-    if (!result.destination) return;
+  const handleDragAndDrop = async (
+    issueId: string | undefined,
+    sourceDate: string | undefined,
+    destinationDate: string | undefined
+  ) => {
+    if (!issueId || !destinationDate || !sourceDate) return;
 
-    // return if dropped on the same date
-    if (result.destination.droppableId === result.source.droppableId) return;
-
-    if (handleDragDrop) {
-      await handleDragDrop(
-        result.source,
-        result.destination,
-        workspaceSlug?.toString(),
-        projectId?.toString(),
-        issueStore,
-        issueMap,
-        groupedIssueIds,
-        viewId
-      ).catch((err) => {
-        setToastAlert({
-          title: "Error",
-          type: "error",
-          message: err.detail ?? "Failed to perform this action",
-        });
+    await handleDragDrop(
+      issueId,
+      sourceDate,
+      destinationDate,
+      workspaceSlug?.toString(),
+      projectId?.toString(),
+      updateIssue
+    ).catch((err) => {
+      setToast({
+        title: "Error!",
+        type: TOAST_TYPE.ERROR,
+        message: err?.detail ?? "Failed to perform this action",
       });
-    }
+    });
   };
-
-  const handleIssues = useCallback(
-    async (date: string, issue: TIssue, action: EIssueActions) => {
-      if (issueActions[action]) {
-        await issueActions[action]!(issue);
-      }
-    },
-    [issueActions]
-  );
 
   return (
     <>
       <div className="h-full w-full overflow-hidden bg-custom-background-100 pt-4">
-        <DragDropContext onDragEnd={onDragEnd}>
-          <CalendarChart
-            issuesFilterStore={issuesFilterStore}
-            issues={issueMap}
-            groupedIssueIds={groupedIssueIds}
-            layout={displayFilters?.calendar?.layout}
-            showWeekends={displayFilters?.calendar?.show_weekends ?? false}
-            quickActions={(issue, customActionButton) => (
-              <QuickActions
-                customActionButton={customActionButton}
-                issue={issue}
-                handleDelete={async () => handleIssues(issue.target_date ?? "", issue, EIssueActions.DELETE)}
-                handleUpdate={
-                  issueActions[EIssueActions.UPDATE]
-                    ? async (data) => handleIssues(issue.target_date ?? "", data, EIssueActions.UPDATE)
-                    : undefined
-                }
-                handleRemoveFromView={
-                  issueActions[EIssueActions.REMOVE]
-                    ? async () => handleIssues(issue.target_date ?? "", issue, EIssueActions.REMOVE)
-                    : undefined
-                }
-              />
-            )}
-            quickAddCallback={issueStore.quickAddIssue}
-            viewId={viewId}
-          />
-        </DragDropContext>
+        <CalendarChart
+          issuesFilterStore={issuesFilter}
+          issues={issueMap}
+          groupedIssueIds={groupedIssueIds}
+          layout={displayFilters?.calendar?.layout}
+          showWeekends={displayFilters?.calendar?.show_weekends ?? false}
+          quickActions={({ issue, parentRef, customActionButton, placement }) => (
+            <QuickActions
+              parentRef={parentRef}
+              customActionButton={customActionButton}
+              issue={issue}
+              handleDelete={async () => removeIssue(issue.project_id, issue.id)}
+              handleUpdate={async (data) => updateIssue && updateIssue(issue.project_id, issue.id, data)}
+              handleRemoveFromView={async () => removeIssueFromView && removeIssueFromView(issue.project_id, issue.id)}
+              handleArchive={async () => archiveIssue && archiveIssue(issue.project_id, issue.id)}
+              handleRestore={async () => restoreIssue && restoreIssue(issue.project_id, issue.id)}
+              readOnly={!isEditingAllowed || isCompletedCycle}
+              placements={placement}
+            />
+          )}
+          addIssuesToView={addIssuesToView}
+          quickAddCallback={issues.quickAddIssue}
+          viewId={viewId}
+          readOnly={!isEditingAllowed || isCompletedCycle}
+          updateFilters={updateFilters}
+          handleDragAndDrop={handleDragAndDrop}
+        />
       </div>
     </>
   );

@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { observer } from "mobx-react-lite";
+import { observer } from "mobx-react";
 import { Search, X } from "lucide-react";
-// components
+import { IIssueFilterOptions, IIssueLabel, IState } from "@plane/types";
+// hooks
 import {
   FilterAssignees,
   FilterMentions,
@@ -13,11 +14,14 @@ import {
   FilterState,
   FilterStateGroup,
   FilterTargetDate,
-} from "components/issues";
+  FilterCycle,
+  FilterModule,
+} from "@/components/issues";
+import { ILayoutDisplayFiltersOptions } from "@/constants/issue";
+import { useAppRouter } from "@/hooks/store";
+// components
 // types
-import { IIssueFilterOptions, IIssueLabel, IState } from "@plane/types";
 // constants
-import { ILayoutDisplayFiltersOptions } from "constants/issue";
 
 type Props = {
   filters: IIssueFilterOptions;
@@ -26,10 +30,23 @@ type Props = {
   labels?: IIssueLabel[] | undefined;
   memberIds?: string[] | undefined;
   states?: IState[] | undefined;
+  cycleViewDisabled?: boolean;
+  moduleViewDisabled?: boolean;
 };
 
 export const FilterSelection: React.FC<Props> = observer((props) => {
-  const { filters, handleFiltersUpdate, layoutDisplayFiltersOptions, labels, memberIds, states } = props;
+  const {
+    filters,
+    handleFiltersUpdate,
+    layoutDisplayFiltersOptions,
+    labels,
+    memberIds,
+    states,
+    cycleViewDisabled = false,
+    moduleViewDisabled = false,
+  } = props;
+  // hooks
+  const { moduleId, cycleId } = useAppRouter();
   // states
   const [filtersSearchQuery, setFiltersSearchQuery] = useState("");
 
@@ -55,7 +72,7 @@ export const FilterSelection: React.FC<Props> = observer((props) => {
           )}
         </div>
       </div>
-      <div className="h-full w-full divide-y divide-custom-border-200 overflow-y-auto px-2.5">
+      <div className="vertical-scrollbar scrollbar-sm h-full w-full divide-y divide-custom-border-200 overflow-y-auto px-2.5">
         {/* priority */}
         {isFilterEnabled("priority") && (
           <div className="py-2">
@@ -97,6 +114,28 @@ export const FilterSelection: React.FC<Props> = observer((props) => {
               appliedFilters={filters.assignees ?? null}
               handleUpdate={(val) => handleFiltersUpdate("assignees", val)}
               memberIds={memberIds}
+              searchQuery={filtersSearchQuery}
+            />
+          </div>
+        )}
+
+        {/* cycle */}
+        {isFilterEnabled("cycle") && !cycleId && !cycleViewDisabled && (
+          <div className="py-2">
+            <FilterCycle
+              appliedFilters={filters.cycle ?? null}
+              handleUpdate={(val) => handleFiltersUpdate("cycle", val)}
+              searchQuery={filtersSearchQuery}
+            />
+          </div>
+        )}
+
+        {/* module */}
+        {isFilterEnabled("module") && !moduleId && !moduleViewDisabled && (
+          <div className="py-2">
+            <FilterModule
+              appliedFilters={filters.module ?? null}
+              handleUpdate={(val) => handleFiltersUpdate("module", val)}
               searchQuery={filtersSearchQuery}
             />
           </div>

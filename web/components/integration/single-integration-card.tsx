@@ -1,25 +1,23 @@
 import { useState } from "react";
-
+import { observer } from "mobx-react";
 import Image from "next/image";
 import { useRouter } from "next/router";
-import { observer } from "mobx-react-lite";
 import useSWR, { mutate } from "swr";
-// services
-import { IntegrationService } from "services/integrations";
-// hooks
-import { useApplication, useUser } from "hooks/store";
-import useToast from "hooks/use-toast";
-import useIntegrationPopup from "hooks/use-integration-popup";
+import { CheckCircle } from "lucide-react";
+import { IAppIntegration, IWorkspaceIntegration } from "@plane/types";
 // ui
-import { Button, Loader, Tooltip } from "@plane/ui";
+import { Button, Loader, Tooltip, TOAST_TYPE, setToast } from "@plane/ui";
+// constants
+import { WORKSPACE_INTEGRATIONS } from "@/constants/fetch-keys";
+// hooks
+import { useUser, useInstance } from "@/hooks/store";
+import useIntegrationPopup from "@/hooks/use-integration-popup";
+import { usePlatformOS } from "@/hooks/use-platform-os";
+// services
+import { IntegrationService } from "@/services/integrations";
 // icons
 import GithubLogo from "public/services/github.png";
 import SlackLogo from "public/services/slack.png";
-import { CheckCircle } from "lucide-react";
-// types
-import { IAppIntegration, IWorkspaceIntegration } from "@plane/types";
-// fetch-keys
-import { WORKSPACE_INTEGRATIONS } from "constants/fetch-keys";
 
 type Props = {
   integration: IAppIntegration;
@@ -48,21 +46,17 @@ export const SingleIntegrationCard: React.FC<Props> = observer(({ integration })
   const router = useRouter();
   const { workspaceSlug } = router.query;
   // store hooks
-  const {
-    config: { envConfig },
-  } = useApplication();
+  const { config } = useInstance();
   const {
     membership: { currentWorkspaceRole },
   } = useUser();
-  // toast alert
-  const { setToastAlert } = useToast();
 
   const isUserAdmin = currentWorkspaceRole === 20;
-
+  const { isMobile } = usePlatformOS();
   const { startAuth, isConnecting: isInstalling } = useIntegrationPopup({
     provider: integration.provider,
-    github_app_name: envConfig?.github_app_name || "",
-    slack_client_id: envConfig?.slack_client_id || "",
+    github_app_name: config?.github_app_name || "",
+    slack_client_id: config?.slack_client_id || "",
   });
 
   const { data: workspaceIntegrations } = useSWR(
@@ -87,8 +81,8 @@ export const SingleIntegrationCard: React.FC<Props> = observer(({ integration })
         );
         setDeletingIntegration(false);
 
-        setToastAlert({
-          type: "success",
+        setToast({
+          type: TOAST_TYPE.SUCCESS,
           title: "Deleted successfully!",
           message: `${integration.title} integration deleted successfully.`,
         });
@@ -96,8 +90,8 @@ export const SingleIntegrationCard: React.FC<Props> = observer(({ integration })
       .catch(() => {
         setDeletingIntegration(false);
 
-        setToastAlert({
-          type: "error",
+        setToast({
+          type: TOAST_TYPE.ERROR,
           title: "Error!",
           message: `${integration.title} integration could not be deleted. Please try again.`,
         });
@@ -132,6 +126,7 @@ export const SingleIntegrationCard: React.FC<Props> = observer(({ integration })
       {workspaceIntegrations ? (
         isInstalled ? (
           <Tooltip
+            isMobile={isMobile}
             disabled={isUserAdmin}
             tooltipContent={!isUserAdmin ? "You don't have permission to perform this" : null}
           >
@@ -150,6 +145,7 @@ export const SingleIntegrationCard: React.FC<Props> = observer(({ integration })
           </Tooltip>
         ) : (
           <Tooltip
+            isMobile={isMobile}
             disabled={isUserAdmin}
             tooltipContent={!isUserAdmin ? "You don't have permission to perform this" : null}
           >
@@ -168,7 +164,7 @@ export const SingleIntegrationCard: React.FC<Props> = observer(({ integration })
         )
       ) : (
         <Loader>
-          <Loader.Item height="35px" width="150px" />
+          <Loader.Item height="32px" width="64px" />
         </Loader>
       )}
     </div>

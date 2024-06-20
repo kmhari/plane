@@ -1,17 +1,18 @@
-import { action, computed, makeObservable, observable, runInAction } from "mobx";
-import { computedFn } from "mobx-utils";
 import set from "lodash/set";
 import sortBy from "lodash/sortBy";
-// services
-import { WorkspaceService } from "services/workspace.service";
+import { action, computed, makeObservable, observable, runInAction } from "mobx";
+import { computedFn } from "mobx-utils";
 // types
-import { RootStore } from "store/root.store";
 import { IWorkspaceBulkInviteFormData, IWorkspaceMember, IWorkspaceMemberInvitation } from "@plane/types";
 // constants
-import { EUserWorkspaceRoles } from "constants/workspace";
-import { IRouterStore } from "store/application/router.store";
+import { EUserWorkspaceRoles } from "@/constants/workspace";
+// services
+import { WorkspaceService } from "@/services/workspace.service";
+// types
+import { RootStore } from "@/store/root.store";
+import { IRouterStore } from "@/store/router.store";
+import { IUserStore } from "@/store/user";
 import { IMemberRootStore } from ".";
-import { IUserRootStore } from "store/user";
 
 export interface IWorkspaceMembership {
   id: string;
@@ -26,6 +27,7 @@ export interface IWorkspaceMemberStore {
   // computed
   workspaceMemberIds: string[] | null;
   workspaceMemberInvitationIds: string[] | null;
+  memberMap: Record<string, IWorkspaceMembership> | null;
   // computed actions
   getSearchedWorkspaceMemberIds: (searchQuery: string) => string[] | null;
   getSearchedWorkspaceInvitationIds: (searchQuery: string) => string[] | null;
@@ -55,7 +57,7 @@ export class WorkspaceMemberStore implements IWorkspaceMemberStore {
   workspaceMemberInvitations: Record<string, IWorkspaceMemberInvitation[]> = {}; // { workspaceSlug: [invitations] }
   // stores
   routerStore: IRouterStore;
-  userStore: IUserRootStore;
+  userStore: IUserStore;
   memberRoot: IMemberRootStore;
   // services
   workspaceService;
@@ -68,6 +70,7 @@ export class WorkspaceMemberStore implements IWorkspaceMemberStore {
       // computed
       workspaceMemberIds: computed,
       workspaceMemberInvitationIds: computed,
+      memberMap: computed,
       // actions
       fetchWorkspaceMembers: action,
       updateMember: action,
@@ -78,7 +81,7 @@ export class WorkspaceMemberStore implements IWorkspaceMemberStore {
     });
 
     // root store
-    this.routerStore = _rootStore.app.router;
+    this.routerStore = _rootStore.router;
     this.userStore = _rootStore.user;
     this.memberRoot = _memberRoot;
     // services
@@ -93,11 +96,18 @@ export class WorkspaceMemberStore implements IWorkspaceMemberStore {
     if (!workspaceSlug) return null;
     let members = Object.values(this.workspaceMemberMap?.[workspaceSlug] ?? {});
     members = sortBy(members, [
-      (m) => m.member !== this.userStore.currentUser?.id,
+      (m) => m.member !== this.userStore?.data?.id,
       (m) => this.memberRoot?.memberMap?.[m.member]?.display_name?.toLowerCase(),
     ]);
-    const memberIds = members.map((m) => m.member);
+    //filter out bots
+    const memberIds = members.filter((m) => !this.memberRoot?.memberMap?.[m.member]?.is_bot).map((m) => m.member);
     return memberIds;
+  }
+
+  get memberMap() {
+    const workspaceSlug = this.routerStore.workspaceSlug;
+    if (!workspaceSlug) return null;
+    return this.workspaceMemberMap?.[workspaceSlug] ?? {};
   }
 
   get workspaceMemberInvitationIds() {
@@ -119,7 +129,7 @@ export class WorkspaceMemberStore implements IWorkspaceMemberStore {
       const memberDetails = this.getWorkspaceMemberDetails(userId);
       if (!memberDetails) return false;
       const memberSearchQuery = `${memberDetails.member.first_name} ${memberDetails.member.last_name} ${
-        memberDetails.member.display_name
+        memberDetails.member?.display_name
       } ${memberDetails.member.email ?? ""}`;
       return memberSearchQuery.toLowerCase()?.includes(searchQuery.toLowerCase());
     });

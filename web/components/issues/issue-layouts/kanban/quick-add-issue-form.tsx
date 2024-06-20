@@ -1,17 +1,20 @@
 import { useEffect, useState, useRef } from "react";
+import { observer } from "mobx-react";
 import { useRouter } from "next/router";
 import { useForm } from "react-hook-form";
-import { observer } from "mobx-react-lite";
 import { PlusIcon } from "lucide-react";
-// hooks
-import { useProject } from "hooks/store";
-import useToast from "hooks/use-toast";
-import useKeypress from "hooks/use-keypress";
-import useOutsideClickDetector from "hooks/use-outside-click-detector";
-// helpers
-import { createIssuePayload } from "helpers/issue.helper";
-// types
 import { TIssue } from "@plane/types";
+// hooks
+import { setPromiseToast } from "@plane/ui";
+import { ISSUE_CREATED } from "@/constants/event-tracker";
+import { createIssuePayload } from "@/helpers/issue.helper";
+import { useEventTracker, useProject } from "@/hooks/store";
+import useKeypress from "@/hooks/use-keypress";
+import useOutsideClickDetector from "@/hooks/use-outside-click-detector";
+// helpers
+// ui
+// types
+// constants
 
 const Inputs = (props: any) => {
   const { register, setFocus, projectDetail } = props;
@@ -60,6 +63,7 @@ export const KanBanQuickAddIssueForm: React.FC<IKanBanQuickAddIssueForm> = obser
   const { workspaceSlug, projectId } = router.query;
   // store hooks
   const { getProjectById } = useProject();
+  const { captureIssueEvent } = useEventTracker();
 
   const projectDetail = projectId ? getProjectById(projectId.toString()) : null;
 
@@ -70,7 +74,6 @@ export const KanBanQuickAddIssueForm: React.FC<IKanBanQuickAddIssueForm> = obser
 
   useKeypress("Escape", handleClose);
   useOutsideClickDetector(ref, handleClose);
-  const { setToastAlert } = useToast();
 
   const {
     reset,
@@ -94,35 +97,49 @@ export const KanBanQuickAddIssueForm: React.FC<IKanBanQuickAddIssueForm> = obser
       ...formData,
     });
 
-    try {
-      quickAddCallback &&
-        (await quickAddCallback(
-          workspaceSlug.toString(),
-          projectId.toString(),
-          {
-            ...payload,
-          },
-          viewId
-        ));
-      setToastAlert({
-        type: "success",
-        title: "Success!",
-        message: "Issue created successfully.",
+    if (quickAddCallback) {
+      const quickAddPromise = quickAddCallback(
+        workspaceSlug.toString(),
+        projectId.toString(),
+        {
+          ...payload,
+        },
+        viewId
+      );
+      setPromiseToast<any>(quickAddPromise, {
+        loading: "Adding issue...",
+        success: {
+          title: "Success!",
+          message: () => "Issue created successfully.",
+        },
+        error: {
+          title: "Error!",
+          message: (err) => err?.message || "Some error occurred. Please try again.",
+        },
       });
-    } catch (err: any) {
-      console.error(err);
-      setToastAlert({
-        type: "error",
-        title: "Error!",
-        message: err?.message || "Some error occurred. Please try again.",
-      });
+
+      await quickAddPromise
+        .then((res) => {
+          captureIssueEvent({
+            eventName: ISSUE_CREATED,
+            payload: { ...res, state: "SUCCESS", element: "Kanban quick add" },
+            path: router.asPath,
+          });
+        })
+        .catch(() => {
+          captureIssueEvent({
+            eventName: ISSUE_CREATED,
+            payload: { ...payload, state: "FAILED", element: "Kanban quick add" },
+            path: router.asPath,
+          });
+        });
     }
   };
 
   return (
     <>
       {isOpen ? (
-        <div className="shadow-custom-shadow-sm m-1.5 rounded overflow-hidden">
+        <div className="m-1.5 overflow-hidden rounded shadow-custom-shadow-sm">
           <form
             ref={ref}
             onSubmit={handleSubmit(onSubmitHandler)}
@@ -134,11 +151,11 @@ export const KanBanQuickAddIssueForm: React.FC<IKanBanQuickAddIssueForm> = obser
         </div>
       ) : (
         <div
-          className="flex w-full cursor-pointer items-center gap-2 p-3 py-3 text-custom-primary-100"
+          className="flex w-full cursor-pointer items-center gap-2 p-3 py-1.5 text-custom-text-350 hover:text-custom-text-300"
           onClick={() => setIsOpen(true)}
         >
           <PlusIcon className="h-3.5 w-3.5 stroke-2" />
-          <span className="text-sm font-medium text-custom-primary-100">New Issue</span>
+          <span className="text-sm font-medium">New Issue</span>
         </div>
       )}
     </>

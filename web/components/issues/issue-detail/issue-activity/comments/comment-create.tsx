@@ -1,75 +1,67 @@
 import { FC, useRef } from "react";
 import { useForm, Controller } from "react-hook-form";
-// components
-import { LiteTextEditorWithRef } from "@plane/lite-text-editor";
-import { Button } from "@plane/ui";
-// services
-import { FileService } from "services/file.service";
 // types
-import { TActivityOperations } from "../root";
 import { TIssueComment } from "@plane/types";
-// icons
-import { Globe2, Lock } from "lucide-react";
-import { useMention, useWorkspace } from "hooks/store";
-
-const fileService = new FileService();
+// components
+import { LiteTextEditor } from "@/components/editor/lite-text-editor/lite-text-editor";
+// constants
+import { EIssueCommentAccessSpecifier } from "@/constants/issue";
+// helpers
+import { isEmptyHtmlString } from "@/helpers/string.helper";
+// hooks
+import { useWorkspace } from "@/hooks/store";
+// editor
+import { TActivityOperations } from "../root";
 
 type TIssueCommentCreate = {
+  projectId: string;
   workspaceSlug: string;
   activityOperations: TActivityOperations;
   showAccessSpecifier?: boolean;
+  issueId: string;
 };
-
-type commentAccessType = {
-  icon: any;
-  key: string;
-  label: "Private" | "Public";
-};
-const commentAccess: commentAccessType[] = [
-  {
-    icon: Lock,
-    key: "INTERNAL",
-    label: "Private",
-  },
-  {
-    icon: Globe2,
-    key: "EXTERNAL",
-    label: "Public",
-  },
-];
 
 export const IssueCommentCreate: FC<TIssueCommentCreate> = (props) => {
-  const { workspaceSlug, activityOperations, showAccessSpecifier = false } = props;
-  const workspaceStore = useWorkspace();
-  const workspaceId = workspaceStore.getWorkspaceBySlug(workspaceSlug as string)?.id as string;
-
-  const { mentionHighlights, mentionSuggestions } = useMention();
-
+  const { workspaceSlug, projectId, issueId, activityOperations, showAccessSpecifier = false } = props;
   // refs
   const editorRef = useRef<any>(null);
-  // react hook form
+  // store hooks
+  const workspaceStore = useWorkspace();
+  // derived values
+  const workspaceId = workspaceStore.getWorkspaceBySlug(workspaceSlug as string)?.id as string;
+  // form info
   const {
     handleSubmit,
     control,
+    watch,
     formState: { isSubmitting },
     reset,
-  } = useForm<Partial<TIssueComment>>({ defaultValues: { comment_html: "<p></p>" } });
+  } = useForm<Partial<TIssueComment>>({
+    defaultValues: {
+      comment_html: "<p></p>",
+    },
+  });
 
-  const onSubmit = async (formData: Partial<TIssueComment>) => {
+  const onSubmit = async (formData: Partial<TIssueComment>) =>
     await activityOperations.createComment(formData).finally(() => {
-      reset({ comment_html: "" });
+      reset({
+        comment_html: "<p></p>",
+      });
       editorRef.current?.clearEditor();
     });
-  };
+
+  const commentHTML = watch("comment_html");
+
+  const isEmpty =
+    commentHTML?.trim() === "" ||
+    commentHTML === "<p></p>" ||
+    (isEmptyHtmlString(commentHTML ?? "") && !commentHTML?.includes("mention-component"));
 
   return (
     <div
-    // onKeyDown={(e) => {
-    //   if (e.key === "Enter" && !e.shiftKey) {
-    //     e.preventDefault();
-    //     // handleSubmit(onSubmit)(e);
-    //   }
-    // }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !e.shiftKey && !isEmpty && !isSubmitting) handleSubmit(onSubmit)(e);
+      }}
     >
       <Controller
         name="access"
@@ -79,43 +71,23 @@ export const IssueCommentCreate: FC<TIssueCommentCreate> = (props) => {
             name="comment_html"
             control={control}
             render={({ field: { value, onChange } }) => (
-              <LiteTextEditorWithRef
+              <LiteTextEditor
+                workspaceId={workspaceId}
+                id={"add_comment_" + issueId}
+                value={"<p></p>"}
+                projectId={projectId}
+                workspaceSlug={workspaceSlug}
                 onEnterKeyPress={(e) => {
-                  console.log("yo");
-                  handleSubmit(onSubmit)(e);
+                  if (!isEmpty && !isSubmitting) handleSubmit(onSubmit)(e);
                 }}
-                cancelUploadImage={fileService.cancelUpload}
-                uploadFile={fileService.getUploadFileFunction(workspaceSlug as string)}
-                deleteFile={fileService.getDeleteImageFunction(workspaceId)}
-                restoreFile={fileService.getRestoreImageFunction(workspaceId)}
                 ref={editorRef}
-                value={!value ? "<p></p>" : value}
-                customClassName="p-2"
-                editorContentCustomClassNames="min-h-[35px]"
-                debouncedUpdatesEnabled={false}
-                onChange={(comment_json: Object, comment_html: string) => {
-                  onChange(comment_html);
-                }}
-                mentionSuggestions={mentionSuggestions}
-                mentionHighlights={mentionHighlights}
-                commentAccessSpecifier={
-                  showAccessSpecifier
-                    ? { accessValue: accessValue ?? "INTERNAL", onAccessChange, showAccessSpecifier, commentAccess }
-                    : undefined
-                }
-                submitButton={
-                  <Button
-                    disabled={isSubmitting}
-                    variant="primary"
-                    type="submit"
-                    className="!px-2.5 !py-1.5 !text-xs"
-                    onClick={(e) => {
-                      handleSubmit(onSubmit)(e);
-                    }}
-                  >
-                    {isSubmitting ? "Adding..." : "Comment"}
-                  </Button>
-                }
+                initialValue={value ?? "<p></p>"}
+                containerClassName="min-h-[35px]"
+                onChange={(comment_json, comment_html) => onChange(comment_html)}
+                accessSpecifier={accessValue ?? EIssueCommentAccessSpecifier.INTERNAL}
+                handleAccessChange={onAccessChange}
+                showAccessSpecifier={showAccessSpecifier}
+                isSubmitting={isSubmitting}
               />
             )}
           />

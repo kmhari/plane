@@ -1,24 +1,24 @@
 import { useEffect, useState } from "react";
+import { observer } from "mobx-react";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { observer } from "mobx-react-lite";
+import { TIssuesByStateGroupsWidgetFilters, TIssuesByStateGroupsWidgetResponse, TStateGroups } from "@plane/types";
 // hooks
-import { useDashboard } from "hooks/store";
-// components
-import { PieGraph } from "components/ui";
 import {
   DurationFilterDropdown,
   IssuesByStateGroupEmptyState,
   WidgetLoader,
   WidgetProps,
-} from "components/dashboard/widgets";
+} from "@/components/dashboard/widgets";
+import { PieGraph } from "@/components/ui";
+import { EDurationFilters, STATE_GROUP_GRAPH_COLORS, STATE_GROUP_GRAPH_GRADIENTS } from "@/constants/dashboard";
+import { STATE_GROUPS } from "@/constants/state";
+import { getCustomDates } from "@/helpers/dashboard.helper";
+import { useDashboard } from "@/hooks/store";
+// components
 // helpers
-import { getCustomDates } from "helpers/dashboard.helper";
 // types
-import { TIssuesByStateGroupsWidgetFilters, TIssuesByStateGroupsWidgetResponse, TStateGroups } from "@plane/types";
 // constants
-import { STATE_GROUP_GRAPH_COLORS, STATE_GROUP_GRAPH_GRADIENTS } from "constants/dashboard";
-import { STATE_GROUPS } from "constants/state";
 
 const WIDGET_KEY = "issues_by_state_groups";
 
@@ -34,6 +34,8 @@ export const IssuesByStateGroupWidget: React.FC<WidgetProps> = observer((props) 
   // derived values
   const widgetDetails = getWidgetDetails(workspaceSlug, dashboardId, WIDGET_KEY);
   const widgetStats = getWidgetStats<TIssuesByStateGroupsWidgetResponse[]>(workspaceSlug, dashboardId, WIDGET_KEY);
+  const selectedDuration = widgetDetails?.widget_filters.duration ?? EDurationFilters.NONE;
+  const selectedCustomDates = widgetDetails?.widget_filters.custom_dates ?? [];
 
   const handleUpdateFilters = async (filters: Partial<TIssuesByStateGroupsWidgetFilters>) => {
     if (!widgetDetails) return;
@@ -43,17 +45,22 @@ export const IssuesByStateGroupWidget: React.FC<WidgetProps> = observer((props) 
       filters,
     });
 
+    const filterDates = getCustomDates(
+      filters.duration ?? selectedDuration,
+      filters.custom_dates ?? selectedCustomDates
+    );
     fetchWidgetStats(workspaceSlug, dashboardId, {
       widget_key: WIDGET_KEY,
-      target_date: getCustomDates(filters.target_date ?? widgetDetails.widget_filters.target_date ?? "this_week"),
+      ...(filterDates.trim() !== "" ? { target_date: filterDates } : {}),
     });
   };
 
   // fetch widget stats
   useEffect(() => {
+    const filterDates = getCustomDates(selectedDuration, selectedCustomDates);
     fetchWidgetStats(workspaceSlug, dashboardId, {
       widget_key: WIDGET_KEY,
-      target_date: getCustomDates(widgetDetails?.widget_filters.target_date ?? "this_week"),
+      ...(filterDates.trim() !== "" ? { target_date: filterDates } : {}),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -72,14 +79,14 @@ export const IssuesByStateGroupWidget: React.FC<WidgetProps> = observer((props) 
       startedCount > 0
         ? "started"
         : unStartedCount > 0
-          ? "unstarted"
-          : backlogCount > 0
-            ? "backlog"
-            : completedCount > 0
-              ? "completed"
-              : canceledCount > 0
-                ? "cancelled"
-                : null;
+        ? "unstarted"
+        : backlogCount > 0
+        ? "backlog"
+        : completedCount > 0
+        ? "completed"
+        : canceledCount > 0
+        ? "cancelled"
+        : null;
 
     setActiveStateGroup(stateGroup);
     setDefaultStateGroup(stateGroup);
@@ -128,24 +135,20 @@ export const IssuesByStateGroupWidget: React.FC<WidgetProps> = observer((props) 
 
   return (
     <div className="bg-custom-background-100 rounded-xl border-[0.5px] border-custom-border-200 w-full py-6 hover:shadow-custom-shadow-4xl duration-300 overflow-hidden min-h-96 flex flex-col">
-      <div className="flex items-start justify-between gap-2 pl-7 pr-6">
-        <div>
-          <Link
-            href={`/${workspaceSlug}/workspace-views/assigned`}
-            className="text-lg font-semibold text-custom-text-300 hover:underline"
-          >
-            Assigned by state
-          </Link>
-          <p className="mt-3 text-xs font-medium text-custom-text-300">
-            Filtered by{" "}
-            <span className="border-[0.5px] border-custom-border-300 rounded py-1 px-2 ml-0.5">Due date</span>
-          </p>
-        </div>
+      <div className="flex items-center justify-between gap-2 pl-7 pr-6">
+        <Link
+          href={`/${workspaceSlug}/workspace-views/assigned`}
+          className="text-lg font-semibold text-custom-text-300 hover:underline"
+        >
+          Assigned by state
+        </Link>
         <DurationFilterDropdown
-          value={widgetDetails.widget_filters.target_date ?? "this_week"}
-          onChange={(val) =>
+          customDates={selectedCustomDates}
+          value={selectedDuration}
+          onChange={(val, customDates) =>
             handleUpdateFilters({
-              target_date: val,
+              duration: val,
+              ...(val === "custom" ? { custom_dates: customDates } : {}),
             })
           }
         />

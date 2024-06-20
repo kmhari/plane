@@ -1,17 +1,30 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { observer } from "mobx-react-lite";
-import { Dialog, Transition } from "@headlessui/react";
+import { useRouter } from "next/router";
+// types
+import type { TIssue } from "@plane/types";
+// ui
+import { TOAST_TYPE, setToast } from "@plane/ui";
+// components
+import { EModalPosition, EModalWidth, ModalCore } from "@/components/core";
+// constants
+import { ISSUE_CREATED, ISSUE_UPDATED } from "@/constants/event-tracker";
+import { EIssuesStoreType } from "@/constants/issue";
 // hooks
-import { useApplication, useCycle, useIssues, useModule, useProject, useUser, useWorkspace } from "hooks/store";
-import useToast from "hooks/use-toast";
-import useLocalStorage from "hooks/use-local-storage";
+import {
+  useEventTracker,
+  useCycle,
+  useIssues,
+  useModule,
+  useProject,
+  useIssueDetail,
+  useAppRouter,
+} from "@/hooks/store";
+import { useIssuesActions } from "@/hooks/use-issues-actions";
+import useLocalStorage from "@/hooks/use-local-storage";
 // components
 import { DraftIssueLayout } from "./draft-issue-layout";
 import { IssueFormRoot } from "./form";
-// types
-import type { TIssue } from "@plane/types";
-// constants
-import { EIssuesStoreType, TCreateModalStoreTypes } from "constants/issue";
 
 export interface IssuesModalProps {
   data?: Partial<TIssue>;
@@ -19,68 +32,62 @@ export interface IssuesModalProps {
   onClose: () => void;
   onSubmit?: (res: TIssue) => Promise<void>;
   withDraftIssueWrapper?: boolean;
-  storeType?: TCreateModalStoreTypes;
+  storeType?: EIssuesStoreType;
+  isDraft?: boolean;
 }
 
 export const CreateUpdateIssueModal: React.FC<IssuesModalProps> = observer((props) => {
-  const { data, isOpen, onClose, onSubmit, withDraftIssueWrapper = true, storeType = EIssuesStoreType.PROJECT } = props;
+  const {
+    data,
+    isOpen,
+    onClose,
+    onSubmit,
+    withDraftIssueWrapper = true,
+    storeType = EIssuesStoreType.PROJECT,
+    isDraft = false,
+  } = props;
+  // ref
+  const issueTitleRef = useRef<HTMLInputElement>(null);
   // states
   const [changesMade, setChangesMade] = useState<Partial<TIssue> | null>(null);
   const [createMore, setCreateMore] = useState(false);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [description, setDescription] = useState<string | undefined>(undefined);
   // store hooks
-  const {
-    eventTracker: { postHogEventTracker },
-  } = useApplication();
-  const { currentUser } = useUser();
-  const {
-    router: { workspaceSlug, projectId, cycleId, moduleId, viewId: projectViewId },
-  } = useApplication();
-  const { currentWorkspace } = useWorkspace();
+  const { captureIssueEvent } = useEventTracker();
+  const { workspaceSlug, projectId, cycleId, moduleId } = useAppRouter();
   const { workspaceProjectIds } = useProject();
   const { fetchCycleDetails } = useCycle();
   const { fetchModuleDetails } = useModule();
-  const { issues: projectIssues } = useIssues(EIssuesStoreType.PROJECT);
   const { issues: moduleIssues } = useIssues(EIssuesStoreType.MODULE);
   const { issues: cycleIssues } = useIssues(EIssuesStoreType.CYCLE);
-  const { issues: viewIssues } = useIssues(EIssuesStoreType.PROJECT_VIEW);
-  const { issues: profileIssues } = useIssues(EIssuesStoreType.PROFILE);
-  // store mapping based on current store
-  const issueStores = {
-    [EIssuesStoreType.PROJECT]: {
-      store: projectIssues,
-      dataIdToUpdate: activeProjectId,
-      viewId: undefined,
-    },
-    [EIssuesStoreType.PROJECT_VIEW]: {
-      store: viewIssues,
-      dataIdToUpdate: activeProjectId,
-      viewId: projectViewId,
-    },
-    [EIssuesStoreType.PROFILE]: {
-      store: profileIssues,
-      dataIdToUpdate: currentUser?.id || undefined,
-      viewId: undefined,
-    },
-    [EIssuesStoreType.CYCLE]: {
-      store: cycleIssues,
-      dataIdToUpdate: activeProjectId,
-      viewId: cycleId,
-    },
-    [EIssuesStoreType.MODULE]: {
-      store: moduleIssues,
-      dataIdToUpdate: activeProjectId,
-      viewId: moduleId,
-    },
-  };
-  // toast alert
-  const { setToastAlert } = useToast();
+  const { issues: draftIssues } = useIssues(EIssuesStoreType.DRAFT);
+  const { fetchIssue } = useIssueDetail();
+  // router
+  const router = useRouter();
   // local storage
-  const { setValue: setLocalStorageDraftIssue } = useLocalStorage<any>("draftedIssue", {});
+  const { storedValue: localStorageDraftIssues, setValue: setLocalStorageDraftIssue } = useLocalStorage<
+    Record<string, Partial<TIssue>>
+  >("draftedIssue", {});
   // current store details
-  const { store: currentIssueStore, viewId, dataIdToUpdate } = issueStores[storeType];
+  const { createIssue, updateIssue } = useIssuesActions(storeType);
+
+  const fetchIssueDetail = async (issueId: string | undefined) => {
+    setDescription(undefined);
+    if (!workspaceSlug) return;
+
+    if (!projectId || issueId === undefined) {
+      setDescription(data?.description_html || "<p></p>");
+      return;
+    }
+    const response = await fetchIssue(workspaceSlug, projectId, issueId, isDraft ? "DRAFT" : "DEFAULT");
+    if (response) setDescription(response?.description_html || "<p></p>");
+  };
 
   useEffect(() => {
+    // fetching issue details
+    if (isOpen) fetchIssueDetail(data?.id);
+
     // if modal is closed, reset active project to null
     // and return to avoid activeProjectId being set to some other project
     if (!isOpen) {
@@ -99,7 +106,10 @@ export const CreateUpdateIssueModal: React.FC<IssuesModalProps> = observer((prop
     // in the url. This has the least priority.
     if (workspaceProjectIds && workspaceProjectIds.length > 0 && !activeProjectId)
       setActiveProjectId(projectId ?? workspaceProjectIds?.[0]);
-  }, [data, projectId, workspaceProjectIds, isOpen, activeProjectId]);
+
+    // clearing up the description state when we leave the component
+    return () => setDescription(undefined);
+  }, [data, projectId, isOpen, activeProjectId]);
 
   const addIssueToCycle = async (issue: TIssue, cycleId: string) => {
     if (!workspaceSlug || !activeProjectId) return;
@@ -111,7 +121,7 @@ export const CreateUpdateIssueModal: React.FC<IssuesModalProps> = observer((prop
   const addIssueToModule = async (issue: TIssue, moduleIds: string[]) => {
     if (!workspaceSlug || !activeProjectId) return;
 
-    await moduleIssues.addModulesToIssue(workspaceSlug, activeProjectId, issue.id, moduleIds);
+    await moduleIssues.changeModulesInIssue(workspaceSlug, activeProjectId, issue.id, moduleIds, []);
     moduleIds.forEach((moduleId) => fetchModuleDetails(workspaceSlug, activeProjectId, moduleId));
   };
 
@@ -121,120 +131,102 @@ export const CreateUpdateIssueModal: React.FC<IssuesModalProps> = observer((prop
 
   const handleClose = (saveDraftIssueInLocalStorage?: boolean) => {
     if (changesMade && saveDraftIssueInLocalStorage) {
-      const draftIssue = JSON.stringify(changesMade);
-      setLocalStorageDraftIssue(draftIssue);
+      // updating the current edited issue data in the local storage
+      let draftIssues = localStorageDraftIssues ? localStorageDraftIssues : {};
+      if (workspaceSlug) {
+        draftIssues = { ...draftIssues, [workspaceSlug]: changesMade };
+        setLocalStorageDraftIssue(draftIssues);
+      }
     }
+
     setActiveProjectId(null);
+    setChangesMade(null);
     onClose();
   };
 
-  const handleCreateIssue = async (payload: Partial<TIssue>): Promise<TIssue | undefined> => {
-    if (!workspaceSlug || !dataIdToUpdate) return;
+  const handleCreateIssue = async (
+    payload: Partial<TIssue>,
+    is_draft_issue: boolean = false
+  ): Promise<TIssue | undefined> => {
+    if (!workspaceSlug || !payload.project_id) return;
 
     try {
-      const response = await currentIssueStore.createIssue(workspaceSlug, dataIdToUpdate, payload, viewId);
+      const response = is_draft_issue
+        ? await draftIssues.createIssue(workspaceSlug, payload.project_id, payload)
+        : createIssue && (await createIssue(payload.project_id, payload));
       if (!response) throw new Error();
-
-      currentIssueStore.fetchIssues(workspaceSlug, dataIdToUpdate, "mutation", viewId);
 
       if (payload.cycle_id && payload.cycle_id !== "" && storeType !== EIssuesStoreType.CYCLE)
         await addIssueToCycle(response, payload.cycle_id);
       if (payload.module_ids && payload.module_ids.length > 0 && storeType !== EIssuesStoreType.MODULE)
         await addIssueToModule(response, payload.module_ids);
-
-      setToastAlert({
-        type: "success",
+      setToast({
+        type: TOAST_TYPE.SUCCESS,
         title: "Success!",
-        message: "Issue created successfully.",
+        message: `${is_draft_issue ? "Draft issue" : "Issue"} created successfully.`,
       });
-      postHogEventTracker(
-        "ISSUE_CREATED",
-        {
-          ...response,
-          state: "SUCCESS",
-        },
-        {
-          isGrouping: true,
-          groupType: "Workspace_metrics",
-          groupId: currentWorkspace?.id!,
-        }
-      );
+      captureIssueEvent({
+        eventName: ISSUE_CREATED,
+        payload: { ...response, state: "SUCCESS" },
+        path: router.asPath,
+      });
       !createMore && handleClose();
+      if (createMore) issueTitleRef && issueTitleRef?.current?.focus();
+      setDescription("<p></p>");
+      setChangesMade(null);
       return response;
     } catch (error) {
-      setToastAlert({
-        type: "error",
+      setToast({
+        type: TOAST_TYPE.ERROR,
         title: "Error!",
-        message: "Issue could not be created. Please try again.",
+        message: `${is_draft_issue ? "Draft issue" : "Issue"} could not be created. Please try again.`,
       });
-      postHogEventTracker(
-        "ISSUE_CREATED",
-        {
-          state: "FAILED",
-        },
-        {
-          isGrouping: true,
-          groupType: "Workspace_metrics",
-          groupId: currentWorkspace?.id!,
-        }
-      );
+      captureIssueEvent({
+        eventName: ISSUE_CREATED,
+        payload: { ...payload, state: "FAILED" },
+        path: router.asPath,
+      });
     }
   };
 
   const handleUpdateIssue = async (payload: Partial<TIssue>): Promise<TIssue | undefined> => {
-    if (!workspaceSlug || !dataIdToUpdate || !data?.id) return;
+    if (!workspaceSlug || !payload.project_id || !data?.id) return;
 
     try {
-      const response = await currentIssueStore.updateIssue(workspaceSlug, dataIdToUpdate, data.id, payload, viewId);
-      setToastAlert({
-        type: "success",
+      isDraft
+        ? await draftIssues.updateIssue(workspaceSlug, payload.project_id, data.id, payload)
+        : updateIssue && (await updateIssue(payload.project_id, data.id, payload));
+
+      setToast({
+        type: TOAST_TYPE.SUCCESS,
         title: "Success!",
         message: "Issue updated successfully.",
       });
-      postHogEventTracker(
-        "ISSUE_UPDATED",
-        {
-          ...response,
-          state: "SUCCESS",
-        },
-        {
-          isGrouping: true,
-          groupType: "Workspace_metrics",
-          groupId: currentWorkspace?.id!,
-        }
-      );
-      handleClose();
-      return response;
-    } catch (error) {
-      setToastAlert({
-        type: "error",
-        title: "Error!",
-        message: "Issue could not be created. Please try again.",
+      captureIssueEvent({
+        eventName: ISSUE_UPDATED,
+        payload: { ...payload, issueId: data.id, state: "SUCCESS" },
+        path: router.asPath,
       });
-      postHogEventTracker(
-        "ISSUE_UPDATED",
-        {
-          state: "FAILED",
-        },
-        {
-          isGrouping: true,
-          groupType: "Workspace_metrics",
-          groupId: currentWorkspace?.id!,
-        }
-      );
+      handleClose();
+    } catch (error) {
+      setToast({
+        type: TOAST_TYPE.ERROR,
+        title: "Error!",
+        message: "Issue could not be updated. Please try again.",
+      });
+      captureIssueEvent({
+        eventName: ISSUE_UPDATED,
+        payload: { ...payload, state: "FAILED" },
+        path: router.asPath,
+      });
     }
   };
 
-  const handleFormSubmit = async (formData: Partial<TIssue>) => {
-    if (!workspaceSlug || !dataIdToUpdate || !storeType) return;
-
-    const payload: Partial<TIssue> = {
-      ...formData,
-      description_html: formData.description_html ?? "<p></p>",
-    };
+  const handleFormSubmit = async (payload: Partial<TIssue>, is_draft_issue: boolean = false) => {
+    if (!workspaceSlug || !payload.project_id || !storeType) return;
 
     let response: TIssue | undefined = undefined;
-    if (!data?.id) response = await handleCreateIssue(payload);
+    if (!data?.id) response = await handleCreateIssue(payload, is_draft_issue);
     else response = await handleUpdateIssue(payload);
 
     if (response != undefined && onSubmit) await onSubmit(response);
@@ -246,66 +238,47 @@ export const CreateUpdateIssueModal: React.FC<IssuesModalProps> = observer((prop
   if (!workspaceProjectIds || workspaceProjectIds.length === 0 || !activeProjectId) return null;
 
   return (
-    <Transition.Root show={isOpen} as={React.Fragment}>
-      <Dialog as="div" className="relative z-20" onClose={() => handleClose(true)}>
-        <Transition.Child
-          as={React.Fragment}
-          enter="ease-out duration-300"
-          enterFrom="opacity-0"
-          enterTo="opacity-100"
-          leave="ease-in duration-200"
-          leaveFrom="opacity-100"
-          leaveTo="opacity-0"
-        >
-          <div className="fixed inset-0 bg-custom-backdrop bg-opacity-50 transition-opacity" />
-        </Transition.Child>
-
-        <div className="fixed inset-0 z-10 overflow-y-auto">
-          <div className="my-10 flex items-center justify-center p-4 text-center sm:p-0 md:my-20">
-            <Transition.Child
-              as={React.Fragment}
-              enter="ease-out duration-300"
-              enterFrom="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-              enterTo="opacity-100 translate-y-0 sm:scale-100"
-              leave="ease-in duration-200"
-              leaveFrom="opacity-100 translate-y-0 sm:scale-100"
-              leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-            >
-              <Dialog.Panel className="relative transform rounded-lg border border-custom-border-200 bg-custom-background-100 p-5 text-left shadow-custom-shadow-md transition-all sm:w-full mx-4 sm:max-w-4xl">
-                {withDraftIssueWrapper ? (
-                  <DraftIssueLayout
-                    changesMade={changesMade}
-                    data={{
-                      ...data,
-                      cycle_id: data?.cycle_id ? data?.cycle_id : cycleId ? cycleId : null,
-                      module_ids: data?.module_ids ? data?.module_ids : moduleId ? [moduleId] : null,
-                    }}
-                    onChange={handleFormChange}
-                    onClose={handleClose}
-                    onSubmit={handleFormSubmit}
-                    projectId={activeProjectId}
-                    isCreateMoreToggleEnabled={createMore}
-                    onCreateMoreToggleChange={handleCreateMoreToggleChange}
-                  />
-                ) : (
-                  <IssueFormRoot
-                    data={{
-                      ...data,
-                      cycle_id: data?.cycle_id ? data?.cycle_id : cycleId ? cycleId : null,
-                      module_ids: data?.module_ids ? data?.module_ids : moduleId ? [moduleId] : null,
-                    }}
-                    onClose={() => handleClose(false)}
-                    isCreateMoreToggleEnabled={createMore}
-                    onCreateMoreToggleChange={handleCreateMoreToggleChange}
-                    onSubmit={handleFormSubmit}
-                    projectId={activeProjectId}
-                  />
-                )}
-              </Dialog.Panel>
-            </Transition.Child>
-          </div>
-        </div>
-      </Dialog>
-    </Transition.Root>
+    <ModalCore
+      isOpen={isOpen}
+      handleClose={() => handleClose(true)}
+      position={EModalPosition.TOP}
+      width={EModalWidth.XXXXL}
+    >
+      {withDraftIssueWrapper ? (
+        <DraftIssueLayout
+          changesMade={changesMade}
+          data={{
+            ...data,
+            description_html: description,
+            cycle_id: data?.cycle_id ? data?.cycle_id : cycleId ? cycleId : null,
+            module_ids: data?.module_ids ? data?.module_ids : moduleId ? [moduleId] : null,
+          }}
+          issueTitleRef={issueTitleRef}
+          onChange={handleFormChange}
+          onClose={handleClose}
+          onSubmit={handleFormSubmit}
+          projectId={activeProjectId}
+          isCreateMoreToggleEnabled={createMore}
+          onCreateMoreToggleChange={handleCreateMoreToggleChange}
+          isDraft={isDraft}
+        />
+      ) : (
+        <IssueFormRoot
+          issueTitleRef={issueTitleRef}
+          data={{
+            ...data,
+            description_html: description,
+            cycle_id: data?.cycle_id ? data?.cycle_id : cycleId ? cycleId : null,
+            module_ids: data?.module_ids ? data?.module_ids : moduleId ? [moduleId] : null,
+          }}
+          onClose={() => handleClose(false)}
+          isCreateMoreToggleEnabled={createMore}
+          onCreateMoreToggleChange={handleCreateMoreToggleChange}
+          onSubmit={handleFormSubmit}
+          projectId={activeProjectId}
+          isDraft={isDraft}
+        />
+      )}
+    </ModalCore>
   );
 });

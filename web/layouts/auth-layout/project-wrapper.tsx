@@ -1,10 +1,13 @@
 import { FC, ReactNode } from "react";
+import { observer } from "mobx-react";
 import { useRouter } from "next/router";
-import { observer } from "mobx-react-lite";
 import useSWR from "swr";
+// components
+import { JoinProject } from "@/components/auth-screens";
+import { EmptyState, LogoSpinner } from "@/components/common";
 // hooks
 import {
-  useApplication,
+  useEventTracker,
   useCycle,
   useEstimate,
   useLabel,
@@ -14,12 +17,8 @@ import {
   useProjectState,
   useProjectView,
   useUser,
-  useInbox,
-} from "hooks/store";
-// components
-import { Spinner } from "@plane/ui";
-import { JoinProject } from "components/auth-screens";
-import { EmptyState } from "components/common";
+  useCommandPalette,
+} from "@/hooks/store";
 // images
 import emptyProject from "public/empty-state/project.svg";
 
@@ -30,14 +29,13 @@ interface IProjectAuthWrapper {
 export const ProjectAuthWrapper: FC<IProjectAuthWrapper> = observer((props) => {
   const { children } = props;
   // store
-  const { fetchInboxes } = useInbox();
-  const {
-    commandPalette: { toggleCreateProjectModal },
-  } = useApplication();
+  // const { fetchInboxes } = useInbox();
+  const { toggleCreateProjectModal } = useCommandPalette();
+  const { setTrackElement } = useEventTracker();
   const {
     membership: { fetchUserProjectInfo, projectMemberInfo, hasPermissionToProject },
   } = useUser();
-  const { getProjectById, fetchProjectDetails, currentProjectDetails } = useProject();
+  const { getProjectById, fetchProjectDetails } = useProject();
   const { fetchAllCycles } = useCycle();
   const { fetchModules } = useModule();
   const { fetchViews } = useProjectView();
@@ -64,52 +62,45 @@ export const ProjectAuthWrapper: FC<IProjectAuthWrapper> = observer((props) => {
   // fetching project labels
   useSWR(
     workspaceSlug && projectId ? `PROJECT_LABELS_${workspaceSlug}_${projectId}` : null,
-    workspaceSlug && projectId ? () => fetchProjectLabels(workspaceSlug.toString(), projectId.toString()) : null
+    workspaceSlug && projectId ? () => fetchProjectLabels(workspaceSlug.toString(), projectId.toString()) : null,
+    { revalidateIfStale: false, revalidateOnFocus: false }
   );
   // fetching project members
   useSWR(
     workspaceSlug && projectId ? `PROJECT_MEMBERS_${workspaceSlug}_${projectId}` : null,
-    workspaceSlug && projectId ? () => fetchProjectMembers(workspaceSlug.toString(), projectId.toString()) : null
+    workspaceSlug && projectId ? () => fetchProjectMembers(workspaceSlug.toString(), projectId.toString()) : null,
+    { revalidateIfStale: false, revalidateOnFocus: false }
   );
   // fetching project states
   useSWR(
     workspaceSlug && projectId ? `PROJECT_STATES_${workspaceSlug}_${projectId}` : null,
-    workspaceSlug && projectId ? () => fetchProjectStates(workspaceSlug.toString(), projectId.toString()) : null
+    workspaceSlug && projectId ? () => fetchProjectStates(workspaceSlug.toString(), projectId.toString()) : null,
+    { revalidateIfStale: false, revalidateOnFocus: false }
   );
   // fetching project estimates
   useSWR(
     workspaceSlug && projectId ? `PROJECT_ESTIMATES_${workspaceSlug}_${projectId}` : null,
-    workspaceSlug && projectId ? () => fetchProjectEstimates(workspaceSlug.toString(), projectId.toString()) : null
+    workspaceSlug && projectId ? () => fetchProjectEstimates(workspaceSlug.toString(), projectId.toString()) : null,
+    { revalidateIfStale: false, revalidateOnFocus: false }
   );
   // fetching project cycles
   useSWR(
     workspaceSlug && projectId ? `PROJECT_ALL_CYCLES_${workspaceSlug}_${projectId}` : null,
-    workspaceSlug && projectId ? () => fetchAllCycles(workspaceSlug.toString(), projectId.toString()) : null
+    workspaceSlug && projectId ? () => fetchAllCycles(workspaceSlug.toString(), projectId.toString()) : null,
+    { revalidateIfStale: false, revalidateOnFocus: false }
   );
   // fetching project modules
   useSWR(
     workspaceSlug && projectId ? `PROJECT_MODULES_${workspaceSlug}_${projectId}` : null,
-    workspaceSlug && projectId ? () => fetchModules(workspaceSlug.toString(), projectId.toString()) : null
+    workspaceSlug && projectId ? () => fetchModules(workspaceSlug.toString(), projectId.toString()) : null,
+    { revalidateIfStale: false, revalidateOnFocus: false }
   );
   // fetching project views
   useSWR(
     workspaceSlug && projectId ? `PROJECT_VIEWS_${workspaceSlug}_${projectId}` : null,
-    workspaceSlug && projectId ? () => fetchViews(workspaceSlug.toString(), projectId.toString()) : null
+    workspaceSlug && projectId ? () => fetchViews(workspaceSlug.toString(), projectId.toString()) : null,
+    { revalidateIfStale: false, revalidateOnFocus: false }
   );
-  // fetching project inboxes if inbox is enabled in project settings
-  useSWR(
-    workspaceSlug && projectId && currentProjectDetails && currentProjectDetails.inbox_view
-      ? `PROJECT_INBOXES_${workspaceSlug}_${projectId}`
-      : null,
-    workspaceSlug && projectId && currentProjectDetails && currentProjectDetails.inbox_view
-      ? () => fetchInboxes(workspaceSlug.toString(), projectId.toString())
-      : null,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-    }
-  );
-
   const projectExists = projectId ? getProjectById(projectId.toString()) : null;
 
   // check if the project member apis is loading
@@ -117,7 +108,7 @@ export const ProjectAuthWrapper: FC<IProjectAuthWrapper> = observer((props) => {
     return (
       <div className="grid h-screen place-items-center bg-custom-background-100 p-4">
         <div className="flex flex-col items-center gap-3 text-center">
-          <Spinner />
+          <LogoSpinner />
         </div>
       </div>
     );
@@ -135,7 +126,10 @@ export const ProjectAuthWrapper: FC<IProjectAuthWrapper> = observer((props) => {
           image={emptyProject}
           primaryButton={{
             text: "Create Project",
-            onClick: () => toggleCreateProjectModal(true),
+            onClick: () => {
+              setTrackElement("Projects page empty state");
+              toggleCreateProjectModal(true);
+            },
           }}
         />
       </div>

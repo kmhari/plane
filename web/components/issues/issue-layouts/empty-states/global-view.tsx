@@ -1,19 +1,17 @@
-import { observer } from "mobx-react-lite";
+import { observer } from "mobx-react";
 import { Plus, PlusIcon } from "lucide-react";
 // hooks
-import { useApplication, useProject } from "hooks/store";
+import { EmptyState } from "@/components/common";
+import { useCommandPalette, useEventTracker, useProject } from "@/hooks/store";
 // components
-import { EmptyState } from "components/common";
 // assets
 import emptyIssue from "public/empty-state/issue.svg";
 import emptyProject from "public/empty-state/project.svg";
 
 export const GlobalViewEmptyState: React.FC = observer(() => {
   // store hooks
-  const {
-    commandPalette: { toggleCreateIssueModal, toggleCreateProjectModal },
-    eventTracker: { setTrackElement },
-  } = useApplication();
+  const { toggleCreateIssueModal, toggleCreateProjectModal } = useCommandPalette();
+  const { setTrackElement } = useEventTracker();
   const { workspaceProjectIds } = useProject();
 
   return (
@@ -27,7 +25,7 @@ export const GlobalViewEmptyState: React.FC = observer(() => {
             icon: <Plus className="h-4 w-4" />,
             text: "New Project",
             onClick: () => {
-              setTrackElement("ALL_ISSUES_EMPTY_STATE");
+              setTrackElement("All issues empty state");
               toggleCreateProjectModal(true);
             },
           }}
@@ -41,7 +39,7 @@ export const GlobalViewEmptyState: React.FC = observer(() => {
             text: "New issue",
             icon: <PlusIcon className="h-3 w-3" strokeWidth={2} />,
             onClick: () => {
-              setTrackElement("ALL_ISSUES_EMPTY_STATE");
+              setTrackElement("All issues empty state");
               toggleCreateIssueModal(true);
             },
           }}

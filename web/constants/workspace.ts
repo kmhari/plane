@@ -1,14 +1,14 @@
-// services images
-import GithubLogo from "public/services/github.png";
-import JiraLogo from "public/services/jira.svg";
-import CSVLogo from "public/services/csv.svg";
-import ExcelLogo from "public/services/excel.svg";
-import JSONLogo from "public/services/json.svg";
 // types
 import { TStaticViewTypes } from "@plane/types";
-import { Props } from "components/icons/types";
 // icons
-import { SettingIcon } from "components/icons";
+import { SettingIcon } from "@/components/icons/attachment";
+import { Props } from "@/components/icons/types";
+// services images
+import CSVLogo from "public/services/csv.svg";
+import ExcelLogo from "public/services/excel.svg";
+import GithubLogo from "public/services/github.png";
+import JiraLogo from "public/services/jira.svg";
+import JSONLogo from "public/services/json.svg";
 
 export enum EUserWorkspaceRoles {
   GUEST = 5,
@@ -22,6 +22,25 @@ export const ROLE = {
   10: "Viewer",
   15: "Member",
   20: "Admin",
+};
+
+export const ROLE_DETAILS = {
+  5: {
+    title: "Guest",
+    description: "External members of organizations can be invited as guests.",
+  },
+  10: {
+    title: "Viewer",
+    description: "External members of organizations can be invited as guests.",
+  },
+  15: {
+    title: "Member",
+    description: "Ability to read, write, edit, and delete entities inside projects, cycles, and modules",
+  },
+  20: {
+    title: "Admin",
+    description: "All permissions set to true within the workspace.",
+  },
 };
 
 export const ORGANIZATION_SIZE = ["Just myself", "2-10", "11-50", "51-200", "201-500", "500+"];
@@ -150,22 +169,6 @@ export const WORKSPACE_SETTINGS_LINKS: {
     Icon: SettingIcon,
   },
   {
-    key: "integrations",
-    label: "Integrations",
-    href: `/settings/integrations`,
-    access: EUserWorkspaceRoles.ADMIN,
-    highlight: (pathname: string, baseUrl: string) => pathname === `${baseUrl}/settings/integrations`,
-    Icon: SettingIcon,
-  },
-  {
-    key: "import",
-    label: "Imports",
-    href: `/settings/imports`,
-    access: EUserWorkspaceRoles.ADMIN,
-    highlight: (pathname: string, baseUrl: string) => pathname === `${baseUrl}/settings/imports`,
-    Icon: SettingIcon,
-  },
-  {
     key: "export",
     label: "Exports",
     href: `/settings/exports`,
@@ -190,31 +193,3 @@ export const WORKSPACE_SETTINGS_LINKS: {
     Icon: SettingIcon,
   },
 ];
-
-export const ALL_ISSUES_EMPTY_STATE_DETAILS = {
-  "all-issues": {
-    key: "all-issues",
-    title: "No issues in the project",
-    description: "First project done! Now, slice your work into trackable pieces with issues. Let's go!",
-  },
-  assigned: {
-    key: "assigned",
-    title: "No issues yet",
-    description: "Issues assigned to you can be tracked from here.",
-  },
-  created: {
-    key: "created",
-    title: "No issues yet",
-    description: "All issues created by you come here, track them here directly.",
-  },
-  subscribed: {
-    key: "subscribed",
-    title: "No issues yet",
-    description: "Subscribe to issues you are interested in, track all of them here.",
-  },
-  "custom-view": {
-    key: "custom-view",
-    title: "No issues yet",
-    description: "Issues that applies to the filters, track all of them here.",
-  },
-};

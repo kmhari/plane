@@ -1,26 +1,23 @@
-import React, { useEffect, useRef } from "react";
+import React, { useRef } from "react";
 import { observer } from "mobx-react-lite";
+import { TIssue, IIssueDisplayFilterOptions, IIssueDisplayProperties } from "@plane/types";
 // components
-import { Spinner } from "@plane/ui";
-import { SpreadsheetQuickAddIssueForm } from "components/issues";
+import { LogoSpinner } from "@/components/common";
+import { SpreadsheetQuickAddIssueForm } from "@/components/issues";
+import { SPREADSHEET_PROPERTY_LIST } from "@/constants/spreadsheet";
+import { useProject } from "@/hooks/store";
+import { TRenderQuickActions } from "../list/list-view-types";
 import { SpreadsheetTable } from "./spreadsheet-table";
 // types
-import { TIssue, IIssueDisplayFilterOptions, IIssueDisplayProperties } from "@plane/types";
-import { EIssueActions } from "../types";
 //hooks
-import { useProject } from "hooks/store";
 
 type Props = {
   displayProperties: IIssueDisplayProperties;
   displayFilters: IIssueDisplayFilterOptions;
   handleDisplayFilterUpdate: (data: Partial<IIssueDisplayFilterOptions>) => void;
   issueIds: string[] | undefined;
-  quickActions: (
-    issue: TIssue,
-    customActionButton?: React.ReactElement,
-    portalElement?: HTMLDivElement | null
-  ) => React.ReactNode;
-  handleIssues: (issue: TIssue, action: EIssueActions) => Promise<void>;
+  quickActions: TRenderQuickActions;
+  updateIssue: ((projectId: string, issueId: string, data: Partial<TIssue>) => Promise<void>) | undefined;
   openIssuesListModal?: (() => void) | null;
   quickAddCallback?: (
     workspaceSlug: string,
@@ -32,6 +29,7 @@ type Props = {
   canEditProperties: (projectId: string | undefined) => boolean;
   enableQuickCreateIssue?: boolean;
   disableIssueCreation?: boolean;
+  isWorkspaceLevel?: boolean;
 };
 
 export const SpreadsheetView: React.FC<Props> = observer((props) => {
@@ -41,15 +39,14 @@ export const SpreadsheetView: React.FC<Props> = observer((props) => {
     handleDisplayFilterUpdate,
     issueIds,
     quickActions,
-    handleIssues,
+    updateIssue,
     quickAddCallback,
     viewId,
     canEditProperties,
     enableQuickCreateIssue,
     disableIssueCreation,
+    isWorkspaceLevel = false,
   } = props;
-  // states
-  const isScrolled = useRef(false);
   // refs
   const containerRef = useRef<HTMLTableElement | null>(null);
   const portalRef = useRef<HTMLDivElement | null>(null);
@@ -58,50 +55,25 @@ export const SpreadsheetView: React.FC<Props> = observer((props) => {
 
   const isEstimateEnabled: boolean = currentProjectDetails?.estimate !== null;
 
-  const handleScroll = () => {
-    if (!containerRef.current) return;
-    const scrollLeft = containerRef.current.scrollLeft;
-
-    const columnShadow = "8px 22px 22px 10px rgba(0, 0, 0, 0.05)"; // shadow for regular columns
-    const headerShadow = "8px -22px 22px 10px rgba(0, 0, 0, 0.05)"; // shadow for headers
-
-    //The shadow styles are added this way to avoid re-render of all the rows of table, which could be costly
-    if (scrollLeft > 0 !== isScrolled.current) {
-      const firtColumns = containerRef.current.querySelectorAll("table tr td:first-child, th:first-child");
-
-      for (let i = 0; i < firtColumns.length; i++) {
-        const shadow = i === 0 ? headerShadow : columnShadow;
-        if (scrollLeft > 0) {
-          (firtColumns[i] as HTMLElement).style.boxShadow = shadow;
-        } else {
-          (firtColumns[i] as HTMLElement).style.boxShadow = "none";
-        }
-      }
-      isScrolled.current = scrollLeft > 0;
-    }
-  };
-
-  useEffect(() => {
-    const currentContainerRef = containerRef.current;
-
-    if (currentContainerRef) currentContainerRef.addEventListener("scroll", handleScroll);
-
-    return () => {
-      if (currentContainerRef) currentContainerRef.removeEventListener("scroll", handleScroll);
-    };
-  }, []);
+  const spreadsheetColumnsList = isWorkspaceLevel
+    ? SPREADSHEET_PROPERTY_LIST
+    : SPREADSHEET_PROPERTY_LIST.filter((property) => {
+        if (property === "cycle" && !currentProjectDetails?.cycle_view) return false;
+        if (property === "modules" && !currentProjectDetails?.module_view) return false;
+        return true;
+      });
 
   if (!issueIds || issueIds.length === 0)
     return (
       <div className="grid h-full w-full place-items-center">
-        <Spinner />
+        <LogoSpinner />
       </div>
     );
 
   return (
-    <div className="relative flex flex-col h-full w-full overflow-x-hidden whitespace-nowrap rounded-lg bg-custom-background-200 text-custom-text-200">
+    <div className="relative flex h-full w-full flex-col overflow-x-hidden whitespace-nowrap rounded-lg bg-custom-background-200 text-custom-text-200">
       <div ref={portalRef} className="spreadsheet-menu-portal" />
-      <div ref={containerRef} className="horizontal-scroll-enable h-full w-full">
+      <div ref={containerRef} className="vertical-scrollbar horizontal-scrollbar scrollbar-lg h-full w-full">
         <SpreadsheetTable
           displayProperties={displayProperties}
           displayFilters={displayFilters}
@@ -110,8 +82,10 @@ export const SpreadsheetView: React.FC<Props> = observer((props) => {
           isEstimateEnabled={isEstimateEnabled}
           portalElement={portalRef}
           quickActions={quickActions}
-          handleIssues={handleIssues}
+          updateIssue={updateIssue}
           canEditProperties={canEditProperties}
+          containerRef={containerRef}
+          spreadsheetColumnsList={spreadsheetColumnsList}
         />
       </div>
       <div className="border-t border-custom-border-100">

@@ -1,12 +1,20 @@
-// services
-import { APIService } from "services/api.service";
 // types
 import type { IModule, TIssue, ILinkDetails, ModuleLink } from "@plane/types";
-import { API_BASE_URL } from "helpers/common.helper";
+// services
+import { API_BASE_URL } from "@/helpers/common.helper";
+import { APIService } from "@/services/api.service";
 
 export class ModuleService extends APIService {
   constructor() {
     super(API_BASE_URL);
+  }
+
+  async getWorkspaceModules(workspaceSlug: string): Promise<IModule[]> {
+    return this.get(`/api/workspaces/${workspaceSlug}/modules/`)
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
   }
 
   async getModules(workspaceSlug: string, projectId: string): Promise<IModule[]> {
@@ -89,22 +97,9 @@ export class ModuleService extends APIService {
     workspaceSlug: string,
     projectId: string,
     issueId: string,
-    data: { modules: string[] }
+    data: { modules: string[]; removed_modules?: string[] }
   ): Promise<void> {
     return this.post(`/api/workspaces/${workspaceSlug}/projects/${projectId}/issues/${issueId}/modules/`, data)
-      .then((response) => response?.data)
-      .catch((error) => {
-        throw error?.response?.data;
-      });
-  }
-
-  async removeIssueFromModule(
-    workspaceSlug: string,
-    projectId: string,
-    moduleId: string,
-    issueId: string
-  ): Promise<any> {
-    return this.delete(`/api/workspaces/${workspaceSlug}/projects/${projectId}/modules/${moduleId}/issues/${issueId}/`)
       .then((response) => response?.data)
       .catch((error) => {
         throw error?.response?.data;

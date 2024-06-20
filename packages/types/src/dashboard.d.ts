@@ -1,3 +1,4 @@
+import { EDurationFilters } from "./enums";
 import { IIssueActivity, TIssuePriorities } from "./issues";
 import { TIssue } from "./issues/issue";
 import { TIssueRelationTypes } from "./issues/issue_relation";
@@ -13,31 +14,29 @@ export type TWidgetKeys =
   | "recent_projects"
   | "recent_collaborators";
 
-export type TIssuesListTypes = "upcoming" | "overdue" | "completed";
-
-export type TDurationFilterOptions =
-  | "today"
-  | "this_week"
-  | "this_month"
-  | "this_year";
+export type TIssuesListTypes = "pending" | "upcoming" | "overdue" | "completed";
 
 // widget filters
 export type TAssignedIssuesWidgetFilters = {
-  target_date?: TDurationFilterOptions;
+  custom_dates?: string[];
+  duration?: EDurationFilters;
   tab?: TIssuesListTypes;
 };
 
 export type TCreatedIssuesWidgetFilters = {
-  target_date?: TDurationFilterOptions;
+  custom_dates?: string[];
+  duration?: EDurationFilters;
   tab?: TIssuesListTypes;
 };
 
 export type TIssuesByStateGroupsWidgetFilters = {
-  target_date?: TDurationFilterOptions;
+  duration?: EDurationFilters;
+  custom_dates?: string[];
 };
 
 export type TIssuesByPriorityWidgetFilters = {
-  target_date?: TDurationFilterOptions;
+  custom_dates?: string[];
+  duration?: EDurationFilters;
 };
 
 export type TWidgetFiltersFormData =
@@ -96,6 +95,12 @@ export type TWidgetStatsRequestParams =
   | {
       target_date: string;
       widget_key: "issues_by_priority";
+    }
+  | {
+      cursor: string;
+      per_page: number;
+      search?: string;
+      widget_key: "recent_collaborators";
     };
 
 export type TWidgetIssue = TIssue & {
@@ -140,8 +145,17 @@ export type TRecentActivityWidgetResponse = IIssueActivity;
 export type TRecentProjectsWidgetResponse = string[];
 
 export type TRecentCollaboratorsWidgetResponse = {
-  active_issue_count: number;
-  user_id: string;
+  count: number;
+  extra_stats: Object | null;
+  next_cursor: string;
+  next_page_results: boolean;
+  prev_cursor: string;
+  prev_page_results: boolean;
+  results: {
+    active_issue_count: number;
+    user_id: string;
+  }[];
+  total_pages: number;
 };
 
 export type TWidgetStatsResponse =
@@ -152,7 +166,7 @@ export type TWidgetStatsResponse =
   | TCreatedIssuesWidgetResponse
   | TRecentActivityWidgetResponse[]
   | TRecentProjectsWidgetResponse
-  | TRecentCollaboratorsWidgetResponse[];
+  | TRecentCollaboratorsWidgetResponse;
 
 // dashboard
 export type TDashboard = {

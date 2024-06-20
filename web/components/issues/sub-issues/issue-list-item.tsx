@@ -1,21 +1,24 @@
 import React from "react";
-import { ChevronDown, ChevronRight, X, Pencil, Trash, Link as LinkIcon, Loader } from "lucide-react";
+import { observer } from "mobx-react";
+import { ChevronRight, X, Pencil, Trash, Link as LinkIcon, Loader } from "lucide-react";
+import { TIssue } from "@plane/types";
 // components
+import { ControlLink, CustomMenu, Tooltip } from "@plane/ui";
+import { cn } from "@/helpers/common.helper";
+import { useIssueDetail, useProject, useProjectState } from "@/hooks/store";
+import { usePlatformOS } from "@/hooks/use-platform-os";
 import { IssueList } from "./issues-list";
 import { IssueProperty } from "./properties";
 // ui
-import { ControlLink, CustomMenu, Tooltip } from "@plane/ui";
 // types
-import { TIssue } from "@plane/types";
 import { TSubIssueOperations } from "./root";
 // import { ISubIssuesRootLoaders, ISubIssuesRootLoadersHandler } from "./root";
-import { useIssueDetail, useProject, useProjectState } from "hooks/store";
-import { observer } from "mobx-react-lite";
 
 export interface ISubIssues {
   workspaceSlug: string;
   projectId: string;
   parentIssueId: string;
+  rootIssueId: string;
   spacingLeft: number;
   disabled: boolean;
   handleIssueCrudState: (
@@ -32,6 +35,7 @@ export const IssueListItem: React.FC<ISubIssues> = observer((props) => {
     workspaceSlug,
     projectId,
     parentIssueId,
+    rootIssueId,
     issueId,
     spacingLeft = 10,
     disabled,
@@ -40,13 +44,16 @@ export const IssueListItem: React.FC<ISubIssues> = observer((props) => {
   } = props;
 
   const {
+    getIsIssuePeeked,
     setPeekIssue,
     issue: { getIssueById },
     subIssues: { subIssueHelpersByIssueId, setSubIssueHelpers },
+    toggleCreateIssueModal,
+    toggleDeleteIssueModal,
   } = useIssueDetail();
   const project = useProject();
   const { getProjectStates } = useProjectState();
-
+  const { isMobile } = usePlatformOS();
   const issue = getIssueById(issueId);
   const projectDetail = (issue && issue.project_id && project.getProjectById(issue.project_id)) || undefined;
   const currentIssueStateDetail =
@@ -54,15 +61,21 @@ export const IssueListItem: React.FC<ISubIssues> = observer((props) => {
     undefined;
 
   const subIssueHelpers = subIssueHelpersByIssueId(parentIssueId);
+  const subIssueCount = issue?.sub_issues_count ?? 0;
 
   const handleIssuePeekOverview = (issue: TIssue) =>
     workspaceSlug &&
     issue &&
     issue.project_id &&
     issue.id &&
+    !getIsIssuePeeked(issue.id) &&
     setPeekIssue({ workspaceSlug, projectId: issue.project_id, issueId: issue.id });
 
   if (!issue) return <></>;
+
+  // check if current issue is the root issue
+  const isCurrentIssueRoot = issueId === rootIssueId;
+
   return (
     <div key={issueId}>
       {issue && (
@@ -71,7 +84,8 @@ export const IssueListItem: React.FC<ISubIssues> = observer((props) => {
           style={{ paddingLeft: `${spacingLeft}px` }}
         >
           <div className="h-[22px] w-[22px] flex-shrink-0">
-            {issue?.sub_issues_count > 0 && (
+            {/* disable the chevron when current issue is also the root issue*/}
+            {subIssueCount > 0 && !isCurrentIssueRoot && (
               <>
                 {subIssueHelpers.preview_loader.includes(issue.id) ? (
                   <div className="flex h-full w-full cursor-not-allowed items-center justify-center rounded-sm bg-custom-background-80 transition-all">
@@ -89,11 +103,12 @@ export const IssueListItem: React.FC<ISubIssues> = observer((props) => {
                       setSubIssueHelpers(parentIssueId, "issue_visibility", issueId);
                     }}
                   >
-                    {subIssueHelpers.issue_visibility.includes(issue.id) ? (
-                      <ChevronDown width={14} strokeWidth={2} />
-                    ) : (
-                      <ChevronRight width={14} strokeWidth={2} />
-                    )}
+                    <ChevronRight
+                      className={cn("h-3 w-3 transition-all", {
+                        "rotate-90": subIssueHelpers.issue_visibility.includes(issue.id),
+                      })}
+                      strokeWidth={2}
+                    />
                   </div>
                 )}
               </>
@@ -112,12 +127,13 @@ export const IssueListItem: React.FC<ISubIssues> = observer((props) => {
             </div>
 
             <ControlLink
+              id={`issue-${issue.id}`}
               href={`/${workspaceSlug}/projects/${issue.project_id}/issues/${issue.id}`}
               target="_blank"
               onClick={() => handleIssuePeekOverview(issue)}
               className="w-full line-clamp-1 cursor-pointer text-sm text-custom-text-100"
             >
-              <Tooltip tooltipHeading="Title" tooltipContent={issue.name}>
+              <Tooltip tooltipContent={issue.name} isMobile={isMobile}>
                 <span>{issue.name}</span>
               </Tooltip>
             </ControlLink>
@@ -136,7 +152,12 @@ export const IssueListItem: React.FC<ISubIssues> = observer((props) => {
           <div className="flex-shrink-0 text-sm">
             <CustomMenu placement="bottom-end" ellipsis>
               {disabled && (
-                <CustomMenu.MenuItem onClick={() => handleIssueCrudState("update", parentIssueId, { ...issue })}>
+                <CustomMenu.MenuItem
+                  onClick={() => {
+                    handleIssueCrudState("update", parentIssueId, { ...issue });
+                    toggleCreateIssueModal(true);
+                  }}
+                >
                   <div className="flex items-center gap-2">
                     <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
                     <span>Edit issue</span>
@@ -145,7 +166,12 @@ export const IssueListItem: React.FC<ISubIssues> = observer((props) => {
               )}
 
               {disabled && (
-                <CustomMenu.MenuItem onClick={() => handleIssueCrudState("delete", parentIssueId, issue)}>
+                <CustomMenu.MenuItem
+                  onClick={() => {
+                    handleIssueCrudState("delete", parentIssueId, issue);
+                    toggleDeleteIssueModal(issue.id);
+                  }}
+                >
                   <div className="flex items-center gap-2">
                     <Trash className="h-3.5 w-3.5" strokeWidth={2} />
                     <span>Delete issue</span>
@@ -187,11 +213,13 @@ export const IssueListItem: React.FC<ISubIssues> = observer((props) => {
         </div>
       )}
 
-      {subIssueHelpers.issue_visibility.includes(issueId) && issue.sub_issues_count && issue.sub_issues_count > 0 && (
+      {/* should not expand the current issue if it is also the root issue*/}
+      {subIssueHelpers.issue_visibility.includes(issueId) && subIssueCount > 0 && !isCurrentIssueRoot && (
         <IssueList
           workspaceSlug={workspaceSlug}
           projectId={issue.project_id}
           parentIssueId={issue.id}
+          rootIssueId={rootIssueId}
           spacingLeft={spacingLeft + 22}
           disabled={disabled}
           handleIssueCrudState={handleIssueCrudState}

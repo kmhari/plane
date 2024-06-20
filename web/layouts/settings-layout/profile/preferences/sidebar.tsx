@@ -1,6 +1,6 @@
 import React from "react";
-import { useRouter } from "next/router";
 import Link from "next/link";
+import { useRouter } from "next/router";
 
 export const ProfilePreferenceSettingsSidebar = () => {
   const router = useRouter();
@@ -19,7 +19,7 @@ export const ProfilePreferenceSettingsSidebar = () => {
     },
   ];
   return (
-    <div className="flex w-96 flex-col gap-6 px-8 py-12">
+    <div className="hidden md:flex w-96 flex-col gap-6 px-8 py-12">
       <div className="flex flex-col gap-4">
         <span className="text-xs font-semibold text-custom-text-400">Preference</span>
         <div className="flex w-full flex-col gap-2">

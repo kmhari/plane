@@ -1,21 +1,14 @@
 import React, { FC, useState, useRef, useEffect } from "react";
-import { useRouter } from "next/router";
 import { observer } from "mobx-react-lite";
+import { useRouter } from "next/router";
 import { Controller, useForm } from "react-hook-form";
 import { LayoutPanelTop, Sparkle, X } from "lucide-react";
-// editor
-import { RichTextEditorWithRef } from "@plane/rich-text-editor";
+import { EditorRefApi } from "@plane/rich-text-editor";
+import type { TIssue, ISearchIssueResponse } from "@plane/types";
 // hooks
-import { useApplication, useEstimate, useIssueDetail, useMention, useProject, useWorkspace } from "hooks/store";
-import useToast from "hooks/use-toast";
-// services
-import { AIService } from "services/ai.service";
-import { FileService } from "services/file.service";
+import { Button, CustomMenu, Input, Loader, ToggleSwitch, TOAST_TYPE, setToast } from "@plane/ui";
 // components
-import { GptAssistantPopover } from "components/core";
-import { ParentIssuesListModal } from "components/issues";
-import { IssueLabelSelect } from "components/issues/select";
-import { CreateLabelModal } from "components/labels";
+import { GptAssistantPopover } from "@/components/core";
 import {
   CycleDropdown,
   DateDropdown,
@@ -23,15 +16,23 @@ import {
   ModuleDropdown,
   PriorityDropdown,
   ProjectDropdown,
-  ProjectMemberDropdown,
+  MemberDropdown,
   StateDropdown,
-} from "components/dropdowns";
-// ui
-import { Button, CustomMenu, Input, ToggleSwitch } from "@plane/ui";
+} from "@/components/dropdowns";
+import { RichTextEditor } from "@/components/editor/rich-text-editor/rich-text-editor";
+import { ParentIssuesListModal } from "@/components/issues";
+import { IssueLabelSelect } from "@/components/issues/select";
+import { CreateLabelModal } from "@/components/labels";
 // helpers
-import { renderFormattedPayloadDate } from "helpers/date-time.helper";
-// types
-import type { TIssue, ISearchIssueResponse } from "@plane/types";
+import { renderFormattedPayloadDate, getDate } from "@/helpers/date-time.helper";
+import { getChangedIssuefields, getDescriptionPlaceholder } from "@/helpers/issue.helper";
+import { shouldRenderProject } from "@/helpers/project.helper";
+// hooks
+import { useAppRouter, useEstimate, useInstance, useIssueDetail, useProject, useWorkspace } from "@/hooks/store";
+import useKeypress from "@/hooks/use-keypress";
+import { useProjectIssueProperties } from "@/hooks/use-project-issue-properties";
+// services
+import { AIService } from "@/services/ai.service";
 
 const defaultValues: Partial<TIssue> = {
   project_id: "",
@@ -51,27 +52,55 @@ const defaultValues: Partial<TIssue> = {
 
 export interface IssueFormProps {
   data?: Partial<TIssue>;
+  issueTitleRef: React.MutableRefObject<HTMLInputElement | null>;
   isCreateMoreToggleEnabled: boolean;
   onCreateMoreToggleChange: (value: boolean) => void;
   onChange?: (formData: Partial<TIssue> | null) => void;
   onClose: () => void;
-  onSubmit: (values: Partial<TIssue>) => Promise<void>;
+  onSubmit: (values: Partial<TIssue>, is_draft_issue?: boolean) => Promise<void>;
   projectId: string;
+  isDraft: boolean;
 }
 
 // services
 const aiService = new AIService();
-const fileService = new FileService();
+
+const TAB_INDICES = [
+  "name",
+  "description_html",
+  "feeling_lucky",
+  "ai_assistant",
+  "state_id",
+  "priority",
+  "assignee_ids",
+  "label_ids",
+  "start_date",
+  "target_date",
+  "cycle_id",
+  "module_ids",
+  "estimate_point",
+  "parent_id",
+  "create_more",
+  "discard_button",
+  "draft_button",
+  "submit_button",
+  "project_id",
+  "remove_parent",
+];
+
+const getTabIndex = (key: string) => TAB_INDICES.findIndex((tabIndex) => tabIndex === key) + 1;
 
 export const IssueFormRoot: FC<IssueFormProps> = observer((props) => {
   const {
     data,
+    issueTitleRef,
     onChange,
     onClose,
     onSubmit,
     projectId: defaultProjectId,
     isCreateMoreToggleEnabled,
     onCreateMoreToggleChange,
+    isDraft,
   } = props;
   // states
   const [labelModal, setLabelModal] = useState(false);
@@ -79,30 +108,42 @@ export const IssueFormRoot: FC<IssueFormProps> = observer((props) => {
   const [selectedParentIssue, setSelectedParentIssue] = useState<ISearchIssueResponse | null>(null);
   const [gptAssistantModal, setGptAssistantModal] = useState(false);
   const [iAmFeelingLucky, setIAmFeelingLucky] = useState(false);
-
   // refs
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<EditorRefApi>(null);
+  const submitBtnRef = useRef<HTMLButtonElement | null>(null);
   // router
   const router = useRouter();
   const { workspaceSlug } = router.query;
+  // store hooks
   const workspaceStore = useWorkspace();
   const workspaceId = workspaceStore.getWorkspaceBySlug(workspaceSlug as string)?.id as string;
-
-  // store hooks
-  const {
-    config: { envConfig },
-  } = useApplication();
+  const { projectId: routeProjectId } = useAppRouter();
+  const { config } = useInstance();
   const { getProjectById } = useProject();
   const { areEstimatesEnabledForProject } = useEstimate();
-  const { mentionHighlights, mentionSuggestions } = useMention();
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (editorRef.current?.isEditorReadyToDiscard()) {
+      onClose();
+    } else {
+      setToast({
+        type: TOAST_TYPE.ERROR,
+        title: "Error!",
+        message: "Editor is still processing changes. Please wait before proceeding.",
+      });
+      event.preventDefault(); // Prevent default action if editor is not ready to discard
+    }
+  };
+
+  useKeypress("Escape", handleKeyDown);
+
   const {
     issue: { getIssueById },
   } = useIssueDetail();
-  // toast alert
-  const { setToastAlert } = useToast();
+  const { fetchCycles } = useProjectIssueProperties();
   // form info
   const {
-    formState: { errors, isDirty, isSubmitting },
+    formState: { errors, isDirty, isSubmitting, dirtyFields },
     handleSubmit,
     reset,
     watch,
@@ -132,19 +173,48 @@ export const IssueFormRoot: FC<IssueFormProps> = observer((props) => {
         parent_id: formData.parent_id,
       });
     }
+    if (projectId && routeProjectId !== projectId) fetchCycles(workspaceSlug, projectId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
+  useEffect(() => {
+    if (data?.description_html) setValue("description_html", data?.description_html);
+  }, [data?.description_html]);
+
   const issueName = watch("name");
 
-  const handleFormSubmit = async (formData: Partial<TIssue>) => {
-    await onSubmit(formData);
+  const handleFormSubmit = async (formData: Partial<TIssue>, is_draft_issue = false) => {
+    // Check if the editor is ready to discard
+    if (!editorRef.current?.isEditorReadyToDiscard()) {
+      setToast({
+        type: TOAST_TYPE.ERROR,
+        title: "Error!",
+        message: "Editor is not ready to discard changes.",
+      });
+      return;
+    }
+
+    const submitData = !data?.id
+      ? formData
+      : {
+          ...getChangedIssuefields(formData, dirtyFields as { [key: string]: boolean | undefined }),
+          project_id: getValues("project_id"),
+          id: data.id,
+          description_html: formData.description_html ?? "<p></p>",
+        };
+
+    // this condition helps to move the issues from draft to project issues
+    if (formData.hasOwnProperty("is_draft")) submitData.is_draft = formData.is_draft;
+
+    await onSubmit(submitData, is_draft_issue);
 
     setGptAssistantModal(false);
 
     reset({
       ...defaultValues,
+      ...(isCreateMoreToggleEnabled ? { ...data } : {}),
       project_id: getValues("project_id"),
+      description_html: data?.description_html ?? "<p></p>",
     });
     editorRef?.current?.clearEditor();
   };
@@ -152,8 +222,7 @@ export const IssueFormRoot: FC<IssueFormProps> = observer((props) => {
   const handleAiAssistance = async (response: string) => {
     if (!workspaceSlug || !projectId) return;
 
-    setValue("description_html", `${watch("description_html")}<p>${response}</p>`);
-    editorRef.current?.setEditorValue(`${watch("description_html")}`);
+    editorRef.current?.setEditorValueAtCursorPosition(response);
   };
 
   const handleAutoGenerateDescription = async () => {
@@ -168,8 +237,8 @@ export const IssueFormRoot: FC<IssueFormProps> = observer((props) => {
       })
       .then((res) => {
         if (res.response === "")
-          setToastAlert({
-            type: "error",
+          setToast({
+            type: TOAST_TYPE.ERROR,
             title: "Error!",
             message:
               "Issue title isn't informative enough to generate the description. Please try with a different title.",
@@ -180,14 +249,14 @@ export const IssueFormRoot: FC<IssueFormProps> = observer((props) => {
         const error = err?.data?.error;
 
         if (err.status === 429)
-          setToastAlert({
-            type: "error",
+          setToast({
+            type: TOAST_TYPE.ERROR,
             title: "Error!",
             message: error || "You have reached the maximum number of requests of 50 requests per month per user.",
           });
         else
-          setToastAlert({
-            type: "error",
+          setToast({
+            type: TOAST_TYPE.ERROR,
             title: "Error!",
             message: error || "Some error occurred. Please try again.",
           });
@@ -205,10 +274,10 @@ export const IssueFormRoot: FC<IssueFormProps> = observer((props) => {
   const startDate = watch("start_date");
   const targetDate = watch("target_date");
 
-  const minDate = startDate ? new Date(startDate) : null;
+  const minDate = getDate(startDate);
   minDate?.setDate(minDate.getDate());
 
-  const maxDate = targetDate ? new Date(targetDate) : null;
+  const maxDate = getDate(targetDate);
   maxDate?.setDate(maxDate.getDate());
 
   const projectDetails = getProjectById(projectId);
@@ -248,9 +317,9 @@ export const IssueFormRoot: FC<IssueFormProps> = observer((props) => {
           }}
         />
       )}
-      <form onSubmit={handleSubmit(handleFormSubmit)}>
-        <div className="space-y-5">
-          <div className="flex items-center gap-x-2">
+      <form onSubmit={handleSubmit((data) => handleFormSubmit(data))}>
+        <div className="space-y-5 p-5">
+          <div className="flex items-center gap-x-3">
             {/* Don't show project selection if editing an issue */}
             {!data?.id && (
               <Controller
@@ -268,44 +337,51 @@ export const IssueFormRoot: FC<IssueFormProps> = observer((props) => {
                         handleFormChange();
                       }}
                       buttonVariant="border-with-text"
-                      // TODO: update tabIndex logic
-                      tabIndex={19}
+                      renderCondition={(project) => shouldRenderProject(project)}
+                      tabIndex={getTabIndex("project_id")}
                     />
                   </div>
                 )}
               />
             )}
-            <h3 className="text-xl font-semibold leading-6 text-custom-text-100">
-              {data?.id ? "Update" : "Create"} issue
-            </h3>
+            <h3 className="text-xl font-medium text-custom-text-200">{data?.id ? "Update" : "Create"} Issue</h3>
           </div>
           {watch("parent_id") && selectedParentIssue && (
-            <div className="flex w-min items-center gap-2 whitespace-nowrap rounded bg-custom-background-80 p-2 text-xs">
-              <div className="flex items-center gap-2">
-                <span
-                  className="block h-1.5 w-1.5 rounded-full"
-                  style={{
-                    backgroundColor: selectedParentIssue.state__color,
-                  }}
-                />
-                <span className="flex-shrink-0 text-custom-text-200">
-                  {selectedParentIssue.project__identifier}-{selectedParentIssue.sequence_id}
-                </span>
-                <span className="truncate font-medium">{selectedParentIssue.name.substring(0, 50)}</span>
-                <X
-                  className="h-3 w-3 cursor-pointer"
-                  onClick={() => {
-                    setValue("parent_id", null);
-                    handleFormChange();
-                    setSelectedParentIssue(null);
-                  }}
-                  tabIndex={20}
-                />
-              </div>
-            </div>
+            <Controller
+              control={control}
+              name="parent_id"
+              render={({ field: { onChange } }) => (
+                <div className="flex w-min items-center gap-2 whitespace-nowrap rounded bg-custom-background-90 p-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="block h-1.5 w-1.5 rounded-full"
+                      style={{
+                        backgroundColor: selectedParentIssue.state__color,
+                      }}
+                    />
+                    <span className="flex-shrink-0 text-custom-text-200">
+                      {selectedParentIssue.project__identifier}-{selectedParentIssue.sequence_id}
+                    </span>
+                    <span className="truncate font-medium">{selectedParentIssue.name.substring(0, 50)}</span>
+                    <button
+                      type="button"
+                      className="grid place-items-center"
+                      onClick={() => {
+                        onChange(null);
+                        handleFormChange();
+                        setSelectedParentIssue(null);
+                      }}
+                      tabIndex={getTabIndex("remove_parent")}
+                    >
+                      <X className="h-3 w-3 cursor-pointer" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            />
           )}
           <div className="space-y-3">
-            <div className="mt-2 space-y-3">
+            <div className="space-y-1">
               <Controller
                 control={control}
                 name="name"
@@ -326,352 +402,422 @@ export const IssueFormRoot: FC<IssueFormProps> = observer((props) => {
                       onChange(e.target.value);
                       handleFormChange();
                     }}
-                    ref={ref}
+                    ref={issueTitleRef || ref}
                     hasError={Boolean(errors.name)}
-                    placeholder="Issue Title"
-                    className="resize-none text-xl w-full"
-                    tabIndex={1}
+                    placeholder="Title"
+                    className="w-full text-base"
+                    tabIndex={getTabIndex("name")}
+                    autoFocus
                   />
                 )}
               />
-              <div className="relative">
-                <div className="absolute bottom-3.5 right-3.5 z-10 border-0.5 flex items-center gap-2">
-                  {issueName && issueName.trim() !== "" && envConfig?.has_openai_configured && (
-                    <button
-                      type="button"
-                      className={`flex items-center gap-1 rounded px-1.5 py-1 text-xs bg-custom-background-80 ${
-                        iAmFeelingLucky ? "cursor-wait" : ""
-                      }`}
-                      onClick={handleAutoGenerateDescription}
-                      disabled={iAmFeelingLucky}
-                      tabIndex={3}
-                    >
-                      {iAmFeelingLucky ? (
-                        "Generating response"
-                      ) : (
-                        <>
-                          <Sparkle className="h-3.5 w-3.5" />I{"'"}m feeling lucky
-                        </>
-                      )}
-                    </button>
-                  )}
-                  {envConfig?.has_openai_configured && (
-                    <GptAssistantPopover
-                      isOpen={gptAssistantModal}
-                      projectId={projectId}
-                      handleClose={() => {
-                        setGptAssistantModal((prevData) => !prevData);
-                        // this is done so that the title do not reset after gpt popover closed
-                        reset(getValues());
-                      }}
-                      onResponse={(response) => {
-                        handleAiAssistance(response);
-                      }}
-                      placement="top-end"
-                      button={
-                        <button
-                          type="button"
-                          className="flex items-center gap-1 rounded px-1.5 py-1 text-xs hover:bg-custom-background-90"
-                          onClick={() => setGptAssistantModal((prevData) => !prevData)}
-                          tabIndex={4}
-                        >
-                          <Sparkle className="h-4 w-4" />
-                          AI
-                        </button>
-                      }
-                    />
-                  )}
-                </div>
-                <Controller
-                  name="description_html"
-                  control={control}
-                  render={({ field: { value, onChange } }) => (
-                    <RichTextEditorWithRef
-                      cancelUploadImage={fileService.cancelUpload}
-                      uploadFile={fileService.getUploadFileFunction(workspaceSlug as string)}
-                      deleteFile={fileService.getDeleteImageFunction(workspaceId)}
-                      restoreFile={fileService.getRestoreImageFunction(workspaceId)}
-                      ref={editorRef}
-                      debouncedUpdatesEnabled={false}
-                      value={
-                        !value || value === "" || (typeof value === "object" && Object.keys(value).length === 0)
-                          ? watch("description_html")
-                          : value
-                      }
-                      customClassName="min-h-[7rem] border-custom-border-100"
-                      onChange={(description: Object, description_html: string) => {
-                        onChange(description_html);
+              <span className="text-xs text-red-500">{errors?.name?.message}</span>
+            </div>
+            <div className="border-[0.5px] border-custom-border-200 rounded-lg">
+              {data?.description_html === undefined ? (
+                <Loader className="min-h-[7rem] space-y-2 overflow-hidden rounded-md border border-custom-border-200 p-2 py-2">
+                  <Loader.Item width="100%" height="26px" />
+                  <div className="flex items-center gap-2">
+                    <Loader.Item width="26px" height="26px" />
+                    <Loader.Item width="400px" height="26px" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Loader.Item width="26px" height="26px" />
+                    <Loader.Item width="400px" height="26px" />
+                  </div>
+                  <Loader.Item width="80%" height="26px" />
+                  <div className="flex items-center gap-2">
+                    <Loader.Item width="50%" height="26px" />
+                  </div>
+                  <div className="border-0.5 absolute bottom-3.5 right-3.5 z-10 flex items-center gap-2">
+                    <Loader.Item width="100px" height="26px" />
+                    <Loader.Item width="50px" height="26px" />
+                  </div>
+                </Loader>
+              ) : (
+                <>
+                  <Controller
+                    name="description_html"
+                    control={control}
+                    render={({ field: { value, onChange } }) => (
+                      <RichTextEditor
+                        initialValue={value}
+                        value={data.description_html}
+                        workspaceSlug={workspaceSlug?.toString() as string}
+                        workspaceId={workspaceId}
+                        projectId={projectId}
+                        onChange={(_description: object, description_html: string) => {
+                          onChange(description_html);
+                          handleFormChange();
+                        }}
+                        onEnterKeyPress={() => submitBtnRef?.current?.click()}
+                        ref={editorRef}
+                        tabIndex={getTabIndex("description_html")}
+                        placeholder={getDescriptionPlaceholder}
+                        containerClassName="pt-3 min-h-[150px] max-h-64 overflow-y-auto vertical-scrollbar scrollbar-sm"
+                      />
+                    )}
+                  />
+                  <div className="border-0.5 z-10 flex items-center justify-end gap-2 p-3">
+                    {issueName && issueName.trim() !== "" && config?.has_openai_configured && (
+                      <button
+                        type="button"
+                        className={`flex items-center gap-1 rounded bg-custom-background-90 hover:bg-custom-background-80 px-1.5 py-1 text-xs ${
+                          iAmFeelingLucky ? "cursor-wait" : ""
+                        }`}
+                        onClick={handleAutoGenerateDescription}
+                        disabled={iAmFeelingLucky}
+                        tabIndex={getTabIndex("feeling_lucky")}
+                      >
+                        {iAmFeelingLucky ? (
+                          "Generating response"
+                        ) : (
+                          <>
+                            <Sparkle className="h-3.5 w-3.5" />I{"'"}m feeling lucky
+                          </>
+                        )}
+                      </button>
+                    )}
+                    {config?.has_openai_configured && (
+                      <GptAssistantPopover
+                        isOpen={gptAssistantModal}
+                        projectId={projectId}
+                        handleClose={() => {
+                          setGptAssistantModal((prevData) => !prevData);
+                          // this is done so that the title do not reset after gpt popover closed
+                          reset(getValues());
+                        }}
+                        onResponse={(response) => {
+                          handleAiAssistance(response);
+                        }}
+                        placement="top-end"
+                        button={
+                          <button
+                            type="button"
+                            className="flex items-center gap-1 rounded px-1.5 py-1 text-xs bg-custom-background-90 hover:bg-custom-background-80"
+                            onClick={() => setGptAssistantModal((prevData) => !prevData)}
+                            tabIndex={getTabIndex("ai_assistant")}
+                          >
+                            <Sparkle className="h-4 w-4" />
+                            AI
+                          </button>
+                        }
+                      />
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Controller
+                control={control}
+                name="state_id"
+                render={({ field: { value, onChange } }) => (
+                  <div className="h-7">
+                    <StateDropdown
+                      value={value}
+                      onChange={(stateId) => {
+                        onChange(stateId);
                         handleFormChange();
                       }}
-                      mentionHighlights={mentionHighlights}
-                      mentionSuggestions={mentionSuggestions}
-                      // tabIndex={2}
+                      projectId={projectId}
+                      buttonVariant="border-with-text"
+                      tabIndex={getTabIndex("state_id")}
                     />
-                  )}
-                />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
+                  </div>
+                )}
+              />
+              <Controller
+                control={control}
+                name="priority"
+                render={({ field: { value, onChange } }) => (
+                  <div className="h-7">
+                    <PriorityDropdown
+                      value={value}
+                      onChange={(priority) => {
+                        onChange(priority);
+                        handleFormChange();
+                      }}
+                      buttonVariant="border-with-text"
+                      tabIndex={getTabIndex("priority")}
+                    />
+                  </div>
+                )}
+              />
+              <Controller
+                control={control}
+                name="assignee_ids"
+                render={({ field: { value, onChange } }) => (
+                  <div className="h-7">
+                    <MemberDropdown
+                      projectId={projectId}
+                      value={value}
+                      onChange={(assigneeIds) => {
+                        onChange(assigneeIds);
+                        handleFormChange();
+                      }}
+                      buttonVariant={value?.length > 0 ? "transparent-without-text" : "border-with-text"}
+                      buttonClassName={value?.length > 0 ? "hover:bg-transparent" : ""}
+                      placeholder="Assignees"
+                      multiple
+                      tabIndex={getTabIndex("assignee_ids")}
+                    />
+                  </div>
+                )}
+              />
+              <Controller
+                control={control}
+                name="label_ids"
+                render={({ field: { value, onChange } }) => (
+                  <div className="h-7">
+                    <IssueLabelSelect
+                      setIsOpen={setLabelModal}
+                      value={value}
+                      onChange={(labelIds) => {
+                        onChange(labelIds);
+                        handleFormChange();
+                      }}
+                      projectId={projectId}
+                      tabIndex={getTabIndex("label_ids")}
+                    />
+                  </div>
+                )}
+              />
+              <Controller
+                control={control}
+                name="start_date"
+                render={({ field: { value, onChange } }) => (
+                  <div className="h-7">
+                    <DateDropdown
+                      value={value}
+                      onChange={(date) => onChange(date ? renderFormattedPayloadDate(date) : null)}
+                      buttonVariant="border-with-text"
+                      maxDate={maxDate ?? undefined}
+                      placeholder="Start date"
+                      tabIndex={getTabIndex("start_date")}
+                    />
+                  </div>
+                )}
+              />
+              <Controller
+                control={control}
+                name="target_date"
+                render={({ field: { value, onChange } }) => (
+                  <div className="h-7">
+                    <DateDropdown
+                      value={value}
+                      onChange={(date) => onChange(date ? renderFormattedPayloadDate(date) : null)}
+                      buttonVariant="border-with-text"
+                      minDate={minDate ?? undefined}
+                      placeholder="Due date"
+                      tabIndex={getTabIndex("target_date")}
+                    />
+                  </div>
+                )}
+              />
+              {projectDetails?.cycle_view && (
                 <Controller
                   control={control}
-                  name="state_id"
+                  name="cycle_id"
                   render={({ field: { value, onChange } }) => (
                     <div className="h-7">
-                      <StateDropdown
-                        value={value}
-                        onChange={(stateId) => {
-                          onChange(stateId);
+                      <CycleDropdown
+                        projectId={projectId}
+                        onChange={(cycleId) => {
+                          onChange(cycleId);
                           handleFormChange();
                         }}
-                        projectId={projectId}
+                        placeholder="Cycle"
+                        value={value}
                         buttonVariant="border-with-text"
-                        tabIndex={6}
+                        tabIndex={getTabIndex("cycle_id")}
                       />
                     </div>
                   )}
                 />
+              )}
+              {projectDetails?.module_view && workspaceSlug && (
                 <Controller
                   control={control}
-                  name="priority"
+                  name="module_ids"
                   render={({ field: { value, onChange } }) => (
                     <div className="h-7">
-                      <PriorityDropdown
-                        value={value}
-                        onChange={(priority) => {
-                          onChange(priority);
-                          handleFormChange();
-                        }}
-                        buttonVariant="border-with-text"
-                        tabIndex={7}
-                      />
-                    </div>
-                  )}
-                />
-                <Controller
-                  control={control}
-                  name="assignee_ids"
-                  render={({ field: { value, onChange } }) => (
-                    <div className="h-7">
-                      <ProjectMemberDropdown
+                      <ModuleDropdown
                         projectId={projectId}
-                        value={value}
-                        onChange={(assigneeIds) => {
-                          onChange(assigneeIds);
+                        value={value ?? []}
+                        onChange={(moduleIds) => {
+                          onChange(moduleIds);
                           handleFormChange();
                         }}
-                        buttonVariant={value?.length > 0 ? "transparent-without-text" : "border-with-text"}
-                        buttonClassName={value?.length > 0 ? "hover:bg-transparent px-0" : ""}
-                        placeholder="Assignees"
+                        placeholder="Modules"
+                        buttonVariant="border-with-text"
+                        tabIndex={getTabIndex("module_ids")}
                         multiple
-                        tabIndex={8}
+                        showCount
                       />
                     </div>
                   )}
                 />
+              )}
+              {areEstimatesEnabledForProject(projectId) && (
                 <Controller
                   control={control}
-                  name="label_ids"
+                  name="estimate_point"
                   render={({ field: { value, onChange } }) => (
                     <div className="h-7">
-                      <IssueLabelSelect
-                        setIsOpen={setLabelModal}
+                      <EstimateDropdown
                         value={value}
-                        onChange={(labelIds) => {
-                          onChange(labelIds);
+                        onChange={(estimatePoint) => {
+                          onChange(estimatePoint);
                           handleFormChange();
                         }}
                         projectId={projectId}
-                        tabIndex={9}
-                      />
-                    </div>
-                  )}
-                />
-                <Controller
-                  control={control}
-                  name="start_date"
-                  render={({ field: { value, onChange } }) => (
-                    <div className="h-7">
-                      <DateDropdown
-                        value={value}
-                        onChange={(date) => {
-                          onChange(date ? renderFormattedPayloadDate(date) : null);
-                          handleFormChange();
-                        }}
                         buttonVariant="border-with-text"
-                        placeholder="Start date"
-                        maxDate={maxDate ?? undefined}
-                        tabIndex={10}
+                        tabIndex={getTabIndex("estimate_point")}
+                        placeholder="Estimate"
                       />
                     </div>
                   )}
                 />
-                <Controller
-                  control={control}
-                  name="target_date"
-                  render={({ field: { value, onChange } }) => (
-                    <div className="h-7">
-                      <DateDropdown
-                        value={value}
-                        onChange={(date) => {
-                          onChange(date ? renderFormattedPayloadDate(date) : null);
-                          handleFormChange();
-                        }}
-                        buttonVariant="border-with-text"
-                        placeholder="Due date"
-                        minDate={minDate ?? undefined}
-                        tabIndex={11}
-                      />
-                    </div>
-                  )}
-                />
-                {projectDetails?.cycle_view && (
-                  <Controller
-                    control={control}
-                    name="cycle_id"
-                    render={({ field: { value, onChange } }) => (
-                      <div className="h-7">
-                        <CycleDropdown
-                          projectId={projectId}
-                          onChange={(cycleId) => {
-                            onChange(cycleId);
-                            handleFormChange();
-                          }}
-                          value={value}
-                          buttonVariant="border-with-text"
-                          tabIndex={12}
-                        />
-                      </div>
-                    )}
-                  />
-                )}
-                {projectDetails?.module_view && workspaceSlug && (
-                  <Controller
-                    control={control}
-                    name="module_ids"
-                    render={({ field: { value, onChange } }) => (
-                      <div className="h-7">
-                        <ModuleDropdown
-                          projectId={projectId}
-                          value={value ?? []}
-                          onChange={(moduleIds) => {
-                            onChange(moduleIds);
-                            handleFormChange();
-                          }}
-                          buttonVariant="border-with-text"
-                          tabIndex={13}
-                          multiple
-                          showCount
-                        />
-                      </div>
-                    )}
-                  />
-                )}
-                {areEstimatesEnabledForProject(projectId) && (
-                  <Controller
-                    control={control}
-                    name="estimate_point"
-                    render={({ field: { value, onChange } }) => (
-                      <div className="h-7">
-                        <EstimateDropdown
-                          value={value}
-                          onChange={(estimatePoint) => {
-                            onChange(estimatePoint);
-                            handleFormChange();
-                          }}
-                          projectId={projectId}
-                          buttonVariant="border-with-text"
-                          tabIndex={14}
-                        />
-                      </div>
-                    )}
-                  />
-                )}
+              )}
+              {watch("parent_id") ? (
                 <CustomMenu
                   customButton={
                     <button
                       type="button"
-                      className="flex items-center justify-between gap-1 w-full cursor-pointer rounded border-[0.5px] border-custom-border-300 text-custom-text-200 px-2 py-1 text-xs hover:bg-custom-background-80"
+                      className="flex cursor-pointer items-center justify-between gap-1 rounded border-[0.5px] border-custom-border-300 px-2 py-1.5 text-xs hover:bg-custom-background-80"
                     >
-                      {watch("parent_id") ? (
-                        <div className="flex items-center gap-1 text-custom-text-200">
-                          <LayoutPanelTop className="h-3 w-3 flex-shrink-0" />
-                          <span className="whitespace-nowrap">
-                            {selectedParentIssue &&
-                              `${selectedParentIssue.project__identifier}-
-                                  ${selectedParentIssue.sequence_id}`}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1 text-custom-text-300">
-                          <LayoutPanelTop className="h-3 w-3 flex-shrink-0" />
-                          <span className="whitespace-nowrap">Add parent</span>
-                        </div>
-                      )}
+                      <LayoutPanelTop className="h-3 w-3 flex-shrink-0" />
+                      <span className="whitespace-nowrap">
+                        {selectedParentIssue &&
+                          `${selectedParentIssue.project__identifier}-${selectedParentIssue.sequence_id}`}
+                      </span>
                     </button>
                   }
                   placement="bottom-start"
-                  tabIndex={15}
+                  tabIndex={getTabIndex("parent_id")}
                 >
-                  {watch("parent_id") ? (
-                    <>
-                      <CustomMenu.MenuItem className="!p-1" onClick={() => setParentIssueListModalOpen(true)}>
-                        Change parent issue
-                      </CustomMenu.MenuItem>
-                      <CustomMenu.MenuItem
-                        className="!p-1"
-                        onClick={() => {
-                          setValue("parent_id", null);
-                          handleFormChange();
-                        }}
-                      >
-                        Remove parent issue
-                      </CustomMenu.MenuItem>
-                    </>
-                  ) : (
+                  <>
                     <CustomMenu.MenuItem className="!p-1" onClick={() => setParentIssueListModalOpen(true)}>
-                      Select parent Issue
+                      Change parent issue
                     </CustomMenu.MenuItem>
-                  )}
-                </CustomMenu>
-                <Controller
-                  control={control}
-                  name="parent_id"
-                  render={({ field: { onChange } }) => (
-                    <ParentIssuesListModal
-                      isOpen={parentIssueListModalOpen}
-                      handleClose={() => setParentIssueListModalOpen(false)}
-                      onChange={(issue) => {
-                        onChange(issue.id);
-                        handleFormChange();
-                        setSelectedParentIssue(issue);
-                      }}
-                      projectId={projectId}
+                    <Controller
+                      control={control}
+                      name="parent_id"
+                      render={({ field: { onChange } }) => (
+                        <CustomMenu.MenuItem
+                          className="!p-1"
+                          onClick={() => {
+                            onChange(null);
+                            handleFormChange();
+                          }}
+                        >
+                          Remove parent issue
+                        </CustomMenu.MenuItem>
+                      )}
                     />
-                  )}
-                />
-              </div>
+                  </>
+                </CustomMenu>
+              ) : (
+                <button
+                  type="button"
+                  className="flex cursor-pointer items-center justify-between gap-1 rounded border-[0.5px] border-custom-border-300 px-2 py-1.5 text-xs hover:bg-custom-background-80"
+                  onClick={() => setParentIssueListModalOpen(true)}
+                >
+                  <LayoutPanelTop className="h-3 w-3 flex-shrink-0" />
+                  <span className="whitespace-nowrap">Add parent</span>
+                </button>
+              )}
+              <Controller
+                control={control}
+                name="parent_id"
+                render={({ field: { onChange } }) => (
+                  <ParentIssuesListModal
+                    isOpen={parentIssueListModalOpen}
+                    handleClose={() => setParentIssueListModalOpen(false)}
+                    onChange={(issue) => {
+                      onChange(issue.id);
+                      handleFormChange();
+                      setSelectedParentIssue(issue);
+                    }}
+                    projectId={projectId}
+                    issueId={isDraft ? undefined : data?.id}
+                  />
+                )}
+              />
             </div>
           </div>
         </div>
-        <div className="-mx-5 mt-5 flex items-center justify-between gap-2 border-t border-custom-border-100 px-5 pt-5">
-          <div
-            className="flex cursor-default items-center gap-1.5"
-            onClick={() => onCreateMoreToggleChange(!isCreateMoreToggleEnabled)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") onCreateMoreToggleChange(!isCreateMoreToggleEnabled);
-            }}
-            tabIndex={16}
-          >
-            <div className="flex cursor-pointer items-center justify-center">
-              <ToggleSwitch value={isCreateMoreToggleEnabled} onChange={() => {}} size="sm" />
-            </div>
-            <span className="text-xs">Create more</span>
+        <div className="px-5 py-4 flex items-center justify-between gap-2 border-t-[0.5px] border-custom-border-200">
+          <div>
+            {!data?.id && (
+              <div
+                className="inline-flex items-center gap-1.5 cursor-pointer"
+                onClick={() => onCreateMoreToggleChange(!isCreateMoreToggleEnabled)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onCreateMoreToggleChange(!isCreateMoreToggleEnabled);
+                }}
+                tabIndex={getTabIndex("create_more")}
+                role="button"
+              >
+                <ToggleSwitch value={isCreateMoreToggleEnabled} onChange={() => {}} size="sm" />
+                <span className="text-xs">Create more</span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="neutral-primary" size="sm" onClick={onClose} tabIndex={17}>
+            <Button
+              variant="neutral-primary"
+              size="sm"
+              onClick={() => {
+                if (editorRef.current?.isEditorReadyToDiscard()) {
+                  onClose();
+                } else {
+                  setToast({
+                    type: TOAST_TYPE.ERROR,
+                    title: "Error!",
+                    message: "Editor is still processing changes. Please wait before proceeding.",
+                  });
+                }
+              }}
+              tabIndex={getTabIndex("discard_button")}
+            >
               Discard
             </Button>
-            <Button type="submit" variant="primary" size="sm" loading={isSubmitting} tabIndex={18}>
-              {data?.id ? (isSubmitting ? "Updating" : "Update issue") : isSubmitting ? "Creating" : "Create issue"}
+            {isDraft && (
+              <>
+                {data?.id ? (
+                  <Button
+                    variant="neutral-primary"
+                    size="sm"
+                    loading={isSubmitting}
+                    onClick={handleSubmit((data) => handleFormSubmit({ ...data, is_draft: false }))}
+                    tabIndex={getTabIndex("draft_button")}
+                  >
+                    {isSubmitting ? "Moving" : "Move from draft"}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="neutral-primary"
+                    size="sm"
+                    loading={isSubmitting}
+                    onClick={handleSubmit((data) => handleFormSubmit(data, true))}
+                    tabIndex={getTabIndex("draft_button")}
+                  >
+                    {isSubmitting ? "Saving" : "Save as draft"}
+                  </Button>
+                )}
+              </>
+            )}
+            <Button
+              variant="primary"
+              type="submit"
+              size="sm"
+              ref={submitBtnRef}
+              loading={isSubmitting}
+              tabIndex={isDraft ? getTabIndex("submit_button") : getTabIndex("draft_button")}
+            >
+              {data?.id ? (isSubmitting ? "Updating" : "Update Issue") : isSubmitting ? "Creating" : "Create Issue"}
             </Button>
           </div>
         </div>
