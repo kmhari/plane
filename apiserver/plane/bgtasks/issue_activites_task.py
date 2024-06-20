@@ -219,19 +219,7 @@ def track_state(
                 epoch=epoch,
             )
         )
-
-        print("New State : {}".format(old_state.name))
-
-        try:
-            if old_state.name == 'In Progress':
-                issue = Issue.objects.get(pk=issue_id, project_id = project_id)
-                obj = IssueActivity.objects.filter(issue_id = issue_id, project_id = project_id, field = 'state').order_by('epoch').last()
-                if obj is not None and obj.new_value == 'In Progress':
-                    issue.time_consumed = issue.time_consumed + int(((epoch - obj.epoch) / 60))
-                    issue.save()
-        except Exception as e:
-            print("Exception {} occured in consumed hours for issue : {}.".format(str(e), issue_id))
-
+        
 
 # Track changes in issue target date
 def track_target_date(
