@@ -78,7 +78,7 @@ class BaseViewSet(TimezoneMixin, ModelViewSet, BasePaginator):
         except Exception as e:
             if isinstance(e, IntegrityError):
                 return Response(
-                    {"error": e},
+                    {"error": str(e)},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -171,7 +171,7 @@ class BaseAPIView(TimezoneMixin, APIView, BasePaginator):
         except Exception as e:
             if isinstance(e, IntegrityError):
                 return Response(
-                    {"error": e},
+                    {"error": str(e)},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
