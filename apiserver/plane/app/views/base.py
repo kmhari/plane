@@ -79,7 +79,7 @@ class BaseViewSet(TimezoneMixin, ModelViewSet, BasePaginator):
             print(e) if settings.DEBUG else print("Server Error")
             if isinstance(e, IntegrityError):
                 return Response(
-                    {"error": "The payload is not valid"},
+                    {"error": e},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -190,7 +190,7 @@ class BaseAPIView(TimezoneMixin, APIView, BasePaginator):
         except Exception as e:
             if isinstance(e, IntegrityError):
                 return Response(
-                    {"error": "The payload is not valid"},
+                    {"error": e},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 

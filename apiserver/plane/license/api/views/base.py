@@ -69,7 +69,7 @@ class BaseAPIView(TimezoneMixin, APIView, BasePaginator):
         except Exception as e:
             if isinstance(e, IntegrityError):
                 return Response(
-                    {"error": "The payload is not valid"},
+                    {"error": e},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
