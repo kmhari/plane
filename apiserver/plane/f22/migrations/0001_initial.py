@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('db', '0059_issue_time_consumed'),
+        ('db', '0058_alter_moduleissue_issue_and_more'),
     ]
 
     operations = [

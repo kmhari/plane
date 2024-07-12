@@ -6,6 +6,8 @@ services:
       dockerfile: ./web/Dockerfile.web
       args:
         DOCKER_BUILDKIT: 1
+    ports:
+      - 3000:3000
     restart: always
     command: node web/server.js web
     depends_on:
